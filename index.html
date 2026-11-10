@@ -101,7 +101,7 @@
       <b>Nome · Telefone · Veículo · Placa · Data da troca (dd/mm/aaaa) · Serviço · Valor · KM</b><br>Pode colar todas as trocas: o sistema junta as do mesmo carro (placa) num cliente só, e não duplica quem já foi importado.</p>
       <textarea id="imp-txt" rows="8" placeholder="João da Silva	42999998888	Gol	ABC1D23	15/03/2026	Óleo 5W30 + filtro	180	85000"></textarea>
       <label>Avisar quantos meses depois da troca?</label>
-      <input id="imp-meses" type="number" value="6" style="max-width:120px">
+      <input id="imp-meses" type="number" value="8" style="max-width:120px">
       <button class="btn btn-primary" style="margin-top:12px" onclick="importar()">Importar</button>
       <div id="imp-msg" class="msg"></div>
     </div>
@@ -132,7 +132,7 @@ const firebaseConfig = {
 };
 
 // Prazo padrão (meses) entre uma troca e o próximo contato
-const PRAZO_PADRAO = 6;
+const PRAZO_PADRAO = 8;
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
