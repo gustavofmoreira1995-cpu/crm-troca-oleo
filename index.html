@@ -170,6 +170,14 @@
       <div id="arq-msg" class="msg"></div>
     </div>
     <div class="item" style="display:block;margin-top:10px">
+      <b>Trazer de volta arquivados</b>
+      <p class="sub">Volta pra lista de contatos os clientes arquivados que estão atrasados há no máximo X dias. Os mais antigos continuam arquivados.</p>
+      <label>Trazer de volta quem está atrasado há até (dias)</label>
+      <input id="desarq-dias" type="number" value="90" style="max-width:120px">
+      <button class="btn btn-primary" style="margin-top:12px" onclick="desarquivar(this)">Trazer de volta</button>
+      <div id="desarq-msg" class="msg"></div>
+    </div>
+    <div class="item" style="display:block;margin-top:10px">
       <b>Backup</b>
       <p class="sub">Baixa uma planilha com todos os clientes. Faça de vez em quando.</p>
       <button class="btn" onclick="exportar()">⬇️ Baixar planilha (CSV)</button>
@@ -779,6 +787,23 @@ window.arquivarAntigos = async btn => {
   if (k) await batch.commit();
   $("arq-msg").innerHTML = `<span style="color:var(--ok)">✅ ${alvo.length} cliente(s) arquivado(s). Eles estão na aba Clientes, filtro "Arquivados".</span>`;
   btn.disabled = false; btn.dataset.conf = ""; btn.textContent = "Arquivar";
+};
+
+window.desarquivar = async btn => {
+  const dias = Number($("desarq-dias").value);
+  if (!dias || dias < 1) { $("desarq-msg").innerHTML = '<span style="color:var(--bad)">Coloque o número de dias.</span>'; return; }
+  const limite = addDias(hoje(), -dias);
+  const alvo = clientes.filter(c => c.status === "arquivado" && c.proximoContato && c.proximoContato >= limite);
+  if (btn.dataset.conf !== "1") { btn.dataset.conf = "1"; btn.textContent = `Clique de novo pra trazer ${alvo.length} cliente(s)`; return; }
+  btn.disabled = true; btn.textContent = "Trazendo...";
+  let k = 0, batch = writeBatch(db);
+  for (const c of alvo) {
+    batch.update(doc(db, "clientes", c.id), { status: "ativo" });
+    if (++k === 400) { await batch.commit(); batch = writeBatch(db); k = 0; }
+  }
+  if (k) await batch.commit();
+  $("desarq-msg").innerHTML = `<span style="color:var(--ok)">✅ ${alvo.length} cliente(s) voltaram pra lista de contatos.</span>`;
+  btn.disabled = false; btn.dataset.conf = ""; btn.textContent = "Trazer de volta";
 };
 
 // ---------- importar / exportar ----------
