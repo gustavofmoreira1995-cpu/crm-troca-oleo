@@ -28,7 +28,8 @@
   .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer}
   .kpi b{font-size:28px;display:block}
   .kpi small{color:var(--mut)}
-  .kpi.bad b{color:var(--bad)} .kpi.warn b{color:var(--warn)} .kpi.blue b{color:var(--blue)} .kpi.ok b{color:var(--ok)}
+  .kpi.bad b{color:var(--bad)} .kpi.warn b{color:var(--warn)} .kpi.blue b{color:var(--blue)} .kpi.ok b{color:var(--ok)} .kpi.agd b{color:#a855f7}
+  .t-agd{background:#a855f722;color:#a855f7}
   .kpi.sel{outline:2px solid var(--pri)}
   .list{display:flex;flex-direction:column;gap:8px}
   .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -81,6 +82,7 @@
       <div class="kpi warn" data-f="semana" onclick="filtro('semana')"><b id="k-sem">0</b><small>Vencem nesta semana</small></div>
       <div class="kpi blue" data-f="mes" onclick="filtro('mes')"><b id="k-mes">0</b><small>Vencem neste mês</small></div>
       <div class="kpi ok" data-f="futuro" onclick="filtro('futuro')"><b id="k-fut">0</b><small>Mais pra frente</small></div>
+      <div class="kpi agd" data-f="agendados" onclick="filtro('agendados')"><b id="k-agd">0</b><small>📅 Agendados (vão vir)</small></div>
     </div>
     <div id="lista-contatos" class="list"></div>
   </section>
@@ -195,8 +197,11 @@ function renderTudo(){ renderContatos(); renderClientes(); }
 // ---------- painel de contatos ----------
 function renderContatos(){
   const h = hoje(), fs = fimSemana(), fm = fimMes();
-  const ativos = clientes.filter(c => c.status === "ativo" && c.proximoContato);
+  const todosAtivos = clientes.filter(c => c.status === "ativo" && c.proximoContato);
+  const agendados = todosAtivos.filter(c => c.agendado && c.agendado >= h);
+  const ativos = todosAtivos.filter(c => !(c.agendado && c.agendado >= h));
   const grupos = {
+    agendados,
     atrasados: ativos.filter(c => c.proximoContato <= h),
     semana: ativos.filter(c => c.proximoContato > h && c.proximoContato <= fs),
     mes: ativos.filter(c => c.proximoContato > fs && c.proximoContato <= fm),
@@ -206,10 +211,18 @@ function renderContatos(){
   $("k-sem").textContent = grupos.semana.length;
   $("k-mes").textContent = grupos.mes.length;
   $("k-fut").textContent = grupos.futuro.length;
+  $("k-agd").textContent = grupos.agendados.length;
   document.querySelectorAll(".kpi").forEach(k => k.classList.toggle("sel", k.dataset.f === filtroAtual));
 
-  const lista = grupos[filtroAtual].sort((a,b) => a.proximoContato.localeCompare(b.proximoContato));
+  const ordem = filtroAtual === "agendados" ? (c => c.agendado) : (c => c.proximoContato);
+  const lista = grupos[filtroAtual].sort((a,b) => ordem(a).localeCompare(ordem(b)));
   $("lista-contatos").innerHTML = lista.length ? lista.map(itemHTML).join("") : '<div class="empty">Nenhum cliente aqui. 👍</div>';
+}
+
+function tagAgenda(c){
+  if (!c.agendado || c.status !== "ativo") return "";
+  if (c.agendado >= hoje()) return `<span class="tag t-agd">📅 Vem dia ${br(c.agendado).slice(0,5)}</span>`;
+  return `<span class="tag t-bad">⚠️ Não compareceu (${br(c.agendado).slice(0,5)})</span>`;
 }
 
 function itemHTML(c){
@@ -217,7 +230,7 @@ function itemHTML(c){
   const tent = (c.contatos||[]).filter(x => x.data >= addDias(c.proximoContato, -60)).length;
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
-      <div class="nome">${esc(c.nome)} <span class="tag ${s.cls}">${s.txt}</span>${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}</div>
+      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}</div>
       <div class="sub">📱 ${esc(c.telefone||"-")} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
@@ -306,7 +319,7 @@ window.salvarNovo = async () => {
   if (existe) {
     const trocas = [...(existe.trocas||[]), t].sort((a,b) => a.data.localeCompare(b.data));
     const u = trocas[trocas.length-1];
-    await updateDoc(doc(db, "clientes", existe.id), {trocas, proximoContato: addMeses(u.data, u.meses), status: "ativo"});
+    await updateDoc(doc(db, "clientes", existe.id), {trocas, proximoContato: addMeses(u.data, u.meses), status: "ativo", agendado: null});
     abrirCliente(existe.id);
     $("modal").insertAdjacentHTML("afterbegin", `<div style="background:#22c55e22;color:var(--ok);padding:10px;border-radius:8px;margin-bottom:12px;font-size:14px">✅ Essa placa já estava cadastrada. A troca foi adicionada no histórico deste cliente.</div>`);
     return;
@@ -329,6 +342,7 @@ window.abrirCliente = id => {
     <h2>${esc(c.nome)}</h2>
     <div class="sub">📱 ${esc(c.telefone)} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
     <div class="sub">Próximo contato: <b>${c.status==="ativo" ? br(c.proximoContato) : "—"}</b> · Total gasto: <b>${money(total)}</b></div>
+    ${tagAgenda(c) ? `<div style="margin-top:6px">${tagAgenda(c)}</div>` : ""}
     ${c.obs ? `<div class="sub">📝 ${esc(c.obs)}</div>` : ""}
     <div class="acts" style="margin-top:12px">
       <button class="btn btn-wa btn-sm" onclick="whats('${id}')">WhatsApp</button>
@@ -381,7 +395,7 @@ window.modalResultado = id => {
     <select id="r-tipo" onchange="trocaTipo()">
       <option value="adiar">Ainda não venceu — chamar de novo depois</option>
       <option value="semresp">Não respondeu</option>
-      <option value="agendou">Agendou / vem trocar</option>
+      <option value="agendou">📅 Agendou — vai vir trocar</option>
       <option value="trocou">Trocou com a gente (registrar troca)</option>
       <option value="fora">Já trocou em outro lugar</option>
       <option value="naoquer">Não quer mais contato</option>
@@ -398,7 +412,8 @@ window.trocaTipo = () => {
     <div class="acts">${[7,15,20,30,45,60].map(d=>`<button class="btn btn-sm" onclick="$('r-data').value='${addDias(hoje(),d)}'">${d} dias</button>`).join("")}</div>
     <input id="r-data" type="date" value="${addDias(hoje(),15)}" style="margin-top:8px">`;
   else if (t === "semresp") ex.innerHTML = `<label>Tentar de novo em</label><input id="r-data" type="date" value="${addDias(hoje(),3)}">`;
-  else if (t === "agendou") ex.innerHTML = `<label>Data agendada (lembrete pra confirmar)</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">`;
+  else if (t === "agendou") ex.innerHTML = `<label>Que dia ele vai vir?</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">
+    <div class="sub" style="margin-top:6px">Se ele não vier até esse dia, aparece como <b style="color:var(--bad)">⚠️ Não compareceu</b> no dia seguinte.</div>`;
   else if (t === "trocou") ex.innerHTML = camposTroca();
   else if (t === "fora") ex.innerHTML = `<label>Quando ele trocou fora? (pra chamar na próxima)</label><input id="r-data" type="date" value="${hoje()}">
     <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
@@ -411,8 +426,9 @@ const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Age
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
   const contatos = [...(c.contatos||[]), {data: hoje(), resultado: NOMES[t], nota}];
-  const upd = {contatos};
-  if (t === "adiar" || t === "semresp" || t === "agendou") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
+  const upd = {contatos, agendado: null};
+  if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
+  else if (t === "adiar" || t === "semresp") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
   else if (t === "trocou") { const tr = lerTroca(); upd.trocas = [...(c.trocas||[]), tr]; upd.proximoContato = addMeses(tr.data, tr.meses); upd.status = "ativo"; }
   else if (t === "fora") {
     if ($("r-seguir").checked) { upd.proximoContato = addMeses($("r-data").value, $("r-meses").value); upd.status = "ativo"; }
@@ -429,7 +445,7 @@ window.modalTroca = id => abrir(`<h2>Nova troca — ${esc(get(id).nome)}</h2>${c
 
 window.salvarTroca = async id => {
   const c = get(id), t = lerTroca();
-  await updateDoc(doc(db, "clientes", id), {trocas: [...(c.trocas||[]), t], proximoContato: addMeses(t.data, t.meses), status: "ativo"});
+  await updateDoc(doc(db, "clientes", id), {trocas: [...(c.trocas||[]), t], proximoContato: addMeses(t.data, t.meses), status: "ativo", agendado: null});
   abrirCliente(id);
 };
 
@@ -498,7 +514,7 @@ window.importar = async () => {
       if (!add.length) continue;
       const todas = [...(ex.trocas||[]), ...add].sort((a,b) => a.data.localeCompare(b.data));
       const u = todas[todas.length-1];
-      batch.update(doc(db, "clientes", ex.id), {trocas: todas, proximoContato: addMeses(u.data, u.meses)});
+      batch.update(doc(db, "clientes", ex.id), {trocas: todas, proximoContato: addMeses(u.data, u.meses), agendado: null});
       atualizados++;
     } else {
       batch.set(doc(COL), {nome: g.nome, telefone: g.telefone, veiculo: g.veiculo, placa: g.placa, obs: "", status: "ativo",
