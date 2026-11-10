@@ -58,6 +58,16 @@
   .checks{display:grid;grid-template-columns:1fr 1fr;gap:6px}
   .chk{display:flex;align-items:center;gap:8px;margin:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt);font-size:14px;cursor:pointer}
   .chk input{width:18px;height:18px;margin:0;accent-color:var(--pri)}
+  .ind-h{font-size:15px;margin:18px 0 8px;color:var(--mut);font-weight:600}
+  .kpi.static{cursor:default}
+  .kpi .det{display:block;font-size:12px;color:var(--mut);margin-top:4px}
+  .ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+  .painel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .fl{margin-bottom:10px;font-size:13px}
+  .fl .lin{display:flex;justify-content:space-between;margin-bottom:4px}
+  .fl .barra{height:10px;border-radius:6px;background:var(--card2);overflow:hidden}
+  .fl .barra i{display:block;height:100%;border-radius:6px}
+  @media(max-width:600px){.ind-grid{grid-template-columns:1fr}}
   @media(max-width:600px){.row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -72,6 +82,7 @@
   <div class="tabs">
     <div class="tab on" data-tab="contatos" onclick="aba('contatos')">📞 Contatos</div>
     <div class="tab" data-tab="clientes" onclick="aba('clientes')">👥 Clientes</div>
+    <div class="tab" data-tab="indicadores" onclick="aba('indicadores')">📊 Indicadores</div>
     <div class="tab" data-tab="importar" onclick="aba('importar')">📥 Importar / Backup</div>
   </div>
 
@@ -102,6 +113,31 @@
     <div id="lista-clientes" class="list"></div>
   </section>
 
+  <!-- INDICADORES -->
+  <section id="sec-indicadores" style="display:none">
+    <div class="bar" style="align-items:center">
+      <span class="sub" style="margin:0">Período</span>
+      <select id="ind-per" onchange="renderIndicadores()" style="width:auto">
+        <option value="mes">Este mês</option><option value="mesant">Mês passado</option>
+        <option value="3m" selected>Últimos 3 meses</option><option value="6m">Últimos 6 meses</option>
+        <option value="ano">Este ano</option><option value="12m">Últimos 12 meses</option><option value="tudo">Tudo</option>
+      </select>
+      <span id="ind-datas" class="sub" style="margin:0"></span>
+    </div>
+    <h3 class="ind-h">🎯 Resultado do CRM</h3>
+    <div class="cards" id="ind-crm"></div>
+    <h3 class="ind-h">📞 Trabalho de contato</h3>
+    <div class="cards" id="ind-equipe"></div>
+    <div class="ind-grid">
+      <div class="painel"><b>Funil do contato</b><div id="ind-funil" style="margin-top:10px"></div></div>
+      <div class="painel"><b>Resultado dos contatos</b><div id="ind-res" style="margin-top:10px"></div></div>
+    </div>
+    <h3 class="ind-h">📈 Visão geral</h3>
+    <div class="cards" id="ind-geral"></div>
+    <div class="painel"><b>Trocas por mês (últimos 12 meses)</b><div style="position:relative;height:260px;margin-top:10px"><canvas id="ind-chart"></canvas></div></div>
+    <p class="sub" style="margin-top:14px">ℹ️ <b>Retorno</b> = a placa já tinha uma troca antes. <b>Via CRM</b> = troca feita até 30 dias depois de um contato registrado. O histórico começa em nov/2025 (dados importados).</p>
+  </section>
+
   <!-- IMPORTAR -->
   <section id="sec-importar" style="display:none">
     <div class="item" style="display:block">
@@ -110,9 +146,17 @@
       <b>Nome · Telefone · Veículo · Placa · Data da troca (dd/mm/aaaa) · Serviço · Valor · KM</b><br>Pode colar todas as trocas: o sistema junta as do mesmo carro (placa) num cliente só, e não duplica quem já foi importado.</p>
       <textarea id="imp-txt" rows="8" placeholder="João da Silva	42999998888	Gol	ABC1D23	15/03/2026	Óleo 5W30 + filtro	180	85000"></textarea>
       <label>Avisar quantos meses depois da troca?</label>
-      <input id="imp-meses" type="number" value="8" style="max-width:120px">
+      <input id="imp-meses" type="number" value="7" style="max-width:120px">
       <button class="btn btn-primary" style="margin-top:12px" onclick="importar()">Importar</button>
       <div id="imp-msg" class="msg"></div>
+    </div>
+    <div class="item" style="display:block;margin-top:10px">
+      <b>Ajustar prazo de todos os clientes</b>
+      <p class="sub">Muda o prazo do próximo contato de todos os clientes que estão com a data automática. Não mexe em quem já teve contato registrado, agendamento ou data editada à mão.</p>
+      <label>Novo prazo (meses depois da última troca)</label>
+      <input id="aj-meses" type="number" value="7" style="max-width:120px">
+      <button class="btn btn-primary" style="margin-top:12px" onclick="ajustarPrazo(this)">Ajustar todos</button>
+      <div id="aj-msg" class="msg"></div>
     </div>
     <div class="item" style="display:block;margin-top:10px">
       <b>Backup</b>
@@ -126,6 +170,7 @@
 <!-- MODAL -->
 <div class="modal-bg" id="mbg" onclick="if(event.target===this)fechar()"><div class="modal" id="modal"></div></div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -141,7 +186,7 @@ const firebaseConfig = {
 };
 
 // Prazo padrão (meses) entre uma troca e o próximo contato
-const PRAZO_PADRAO = 8;
+const PRAZO_PADRAO = 7;
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -188,11 +233,12 @@ onSnapshot(COL, snap => {
 // ---------- navegação ----------
 window.aba = t => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
-  ["contatos","clientes","importar"].forEach(s => $("sec-"+s).style.display = s===t ? "block" : "none");
+  ["contatos","clientes","indicadores","importar"].forEach(s => $("sec-"+s).style.display = s===t ? "block" : "none");
+  if (t === "indicadores") renderIndicadores();
 };
 window.filtro = f => { filtroAtual = f; renderContatos(); };
 
-function renderTudo(){ renderContatos(); renderClientes(); }
+function renderTudo(){ renderContatos(); renderClientes(); renderIndicadores(); }
 
 // ---------- painel de contatos ----------
 function renderContatos(){
@@ -425,7 +471,9 @@ const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Age
 
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
-  const contatos = [...(c.contatos||[]), {data: hoje(), resultado: NOMES[t], nota}];
+  const novo = {data: hoje(), resultado: NOMES[t], nota};
+  if (t === "agendou") novo.agendadoPara = $("r-data").value;
+  const contatos = [...(c.contatos||[]), novo];
   const upd = {contatos, agendado: null};
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
   else if (t === "adiar" || t === "semresp") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
@@ -477,6 +525,164 @@ window.excluir = async id => {
   const b = event.target;
   if (b.dataset.conf !== "1") { b.dataset.conf = "1"; b.textContent = "Clique de novo pra confirmar"; return; }
   await deleteDoc(doc(db, "clientes", id)); fechar();
+};
+
+// ---------- indicadores ----------
+let chartMes = null;
+const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+const money0 = v => "R$ " + Math.round(v).toLocaleString("pt-BR");
+
+function periodo(){
+  const p = $("ind-per").value, d = new Date(), y = d.getFullYear(), m = d.getMonth(), f = iso(d);
+  if (p === "mes") return [iso(new Date(y, m, 1)), f];
+  if (p === "mesant") return [iso(new Date(y, m-1, 1)), iso(new Date(y, m, 0))];
+  if (p === "3m") return [addMeses(f, -3), f];
+  if (p === "6m") return [addMeses(f, -6), f];
+  if (p === "ano") return [y + "-01-01", f];
+  if (p === "12m") return [addMeses(f, -12), f];
+  return ["2000-01-01", f];
+}
+
+const kpiHTML = (cor, valor, titulo, det) =>
+  `<div class="kpi static ${cor}"><b>${valor}</b><small>${titulo}</small>${det ? `<span class="det">${det}</span>` : ""}</div>`;
+
+window.renderIndicadores = () => {
+  if (!$("sec-indicadores") || $("sec-indicadores").style.display === "none") return;
+  const [ini, fim] = periodo(), h = hoje();
+  const dentro = d => d >= ini && d <= fim;
+  $("ind-datas").textContent = ini === "2000-01-01" ? "" : br(ini) + " a " + br(fim);
+
+  let tro = 0, ret = 0, fat = 0, fatRet = 0, fatNovo = 0;
+  let venc = 0, recup = 0, cob = 0;
+  let nCont = 0, trocasCRM = 0, receitaCRM = 0;
+  let agendTot = 0, agendFech = 0, compar = 0;
+  const contatados = new Map(), res = {}, agendCli = new Set();
+
+  clientes.forEach(c => {
+    const trocas = (c.trocas||[]).slice().sort((a,b) => a.data.localeCompare(b.data));
+    const conts = c.contatos || [];
+    trocas.forEach(t => {
+      const v = Number(t.valor || 0);
+      if (dentro(t.data)) {
+        tro++; fat += v;
+        if (trocas.some(o => o.data <= addDias(t.data, -15))) { ret++; fatRet += v; } else fatNovo += v;
+        if (conts.some(x => x.data <= t.data && x.data >= addDias(t.data, -30))) { trocasCRM++; receitaCRM += v; }
+      }
+      const due = addMeses(t.data, t.meses || PRAZO_PADRAO);
+      if (dentro(due) && due <= h) {
+        venc++;
+        const voltou = trocas.some(o => o.data > addDias(t.data, 15));
+        if (voltou) recup++;
+        if (voltou || conts.some(x => x.data >= addDias(due, -15))) cob++;
+      }
+    });
+    conts.forEach(x => {
+      if (!dentro(x.data)) return;
+      nCont++;
+      res[x.resultado] = (res[x.resultado] || 0) + 1;
+      if (!contatados.has(c.id) || x.data < contatados.get(c.id)) contatados.set(c.id, x.data);
+      if (x.resultado === "Agendou") {
+        agendTot++; agendCli.add(c.id);
+        const lim = addDias(x.agendadoPara || x.data, 7);
+        const veio = trocas.some(t => t.data >= x.data && t.data <= lim);
+        if (veio) { compar++; agendFech++; } else if (lim < h) agendFech++;
+      }
+    });
+  });
+
+  let conv = 0;
+  const trocouCli = new Set();
+  contatados.forEach((d, id) => {
+    const c = get(id);
+    if ((c.trocas||[]).some(t => t.data >= d && t.data <= addDias(d, 30))) { conv++; trocouCli.add(id); }
+  });
+  const nCli = contatados.size;
+  const fora = res["Trocou em outro lugar"] || 0;
+
+  // fila de hoje
+  const fila = clientes.filter(c => c.status === "ativo" && c.proximoContato && c.proximoContato <= h && !(c.agendado && c.agendado >= h));
+  const espera = fila.length ? Math.round(fila.reduce((s, c) => s - diasAte(c.proximoContato), 0) / fila.length) : 0;
+
+  $("ind-crm").innerHTML =
+    kpiHTML("ok", pct(recup, venc), "Taxa de recuperação", `${recup} de ${venc} vencidos voltaram`) +
+    kpiHTML("blue", pct(conv, nCli), "Conversão do contato", `${conv} de ${nCli} contatados trocaram em até 30 dias`) +
+    kpiHTML("ok", money0(receitaCRM), "Receita via CRM", `${trocasCRM} troca(s) depois de um contato`) +
+    kpiHTML("bad", pct(fora, nCli), "Perdidos pra concorrência", `${fora} disseram que trocaram fora`);
+
+  $("ind-equipe").innerHTML =
+    kpiHTML("blue", nCont, "Contatos registrados", `${nCli} cliente(s) diferentes`) +
+    kpiHTML(venc && cob / venc < 0.7 ? "warn" : "ok", pct(cob, venc), "Cobertura", "vencidos que foram contatados ou já voltaram") +
+    kpiHTML("agd", pct(compar, agendFech), "Comparecimento", `${compar} de ${agendFech} agendados vieram`) +
+    kpiHTML(fila.length ? "bad" : "ok", fila.length, "Fila de atrasados hoje", fila.length ? `esperando, em média, ${espera} dia(s)` : "fila zerada 👏");
+
+  const passo = (nome, n, base, cor) => `<div class="fl"><div class="lin"><span>${nome}</span><b>${n}${base && n !== base ? " · " + pct(n, base) : ""}</b></div><div class="barra"><i style="width:${base ? Math.max(2, n / base * 100) : 0}%;background:${cor}"></i></div></div>`;
+  $("ind-funil").innerHTML = nCli ?
+    passo("Contatados", nCli, nCli, "#3b82f6") +
+    passo("Agendaram", agendCli.size, nCli, "#a855f7") +
+    passo("Trocaram (até 30 dias)", conv, nCli, "#22c55e") +
+    passo("Trocaram em outro lugar", fora, nCli, "#ef4444")
+    : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
+
+  const cores = {"Agendou":"#a855f7","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280"};
+  const ordemRes = Object.entries(res).sort((a,b) => b[1] - a[1]);
+  $("ind-res").innerHTML = ordemRes.length ? ordemRes.map(([k, n]) => passo(k, n, nCont, cores[k] || "#9aa1ad")).join("") : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
+
+  $("ind-geral").innerHTML =
+    kpiHTML("blue", tro, "Trocas no período", `${tro - ret} novos · ${ret} retornos`) +
+    kpiHTML("ok", pct(ret, tro), "Taxa de retorno", "trocas de quem já era cliente") +
+    kpiHTML("blue", money0(fat), "Faturamento", `retornos: ${money0(fatRet)}`) +
+    kpiHTML("warn", (tro - ret ? money0(fatNovo / (tro - ret)) : "—") + " / " + (ret ? money0(fatRet / ret) : "—"), "Ticket médio", "cliente novo / cliente que voltou");
+
+  // gráfico 12 meses
+  const meses = [], d0 = new Date();
+  for (let i = 11; i >= 0; i--) { const d = new Date(d0.getFullYear(), d0.getMonth() - i, 1); meses.push(d.getFullYear() + "-" + pad(d.getMonth() + 1)); }
+  const novos = meses.map(() => 0), rets = meses.map(() => 0), viaCrm = meses.map(() => 0);
+  clientes.forEach(c => {
+    const trocas = c.trocas || [], conts = c.contatos || [];
+    trocas.forEach(t => {
+      const i = meses.indexOf(t.data.slice(0, 7)); if (i < 0) return;
+      if (trocas.some(o => o.data <= addDias(t.data, -15))) rets[i]++; else novos[i]++;
+      if (conts.some(x => x.data <= t.data && x.data >= addDias(t.data, -30))) viaCrm[i]++;
+    });
+  });
+  const nomesMes = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const labels = meses.map(m => nomesMes[+m.slice(5) - 1] + "/" + m.slice(2, 4));
+  if (typeof Chart === "undefined") return;
+  if (chartMes) chartMes.destroy();
+  chartMes = new Chart($("ind-chart"), {
+    data: { labels, datasets: [
+      { type: "bar", label: "Clientes novos", data: novos, backgroundColor: "#4b5563", stack: "t" },
+      { type: "bar", label: "Retornos", data: rets, backgroundColor: "#f5a524", stack: "t" },
+      { type: "line", label: "Retornos via CRM", data: viaCrm, borderColor: "#22c55e", backgroundColor: "#22c55e", tension: .3 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#e8eaee" } } },
+      scales: { x: { stacked: true, ticks: { color: "#9aa1ad" }, grid: { color: "#2a2f3a" } },
+                y: { stacked: true, beginAtZero: true, ticks: { color: "#9aa1ad", precision: 0 }, grid: { color: "#2a2f3a" } } } }
+  });
+};
+
+// ---------- ajustar prazo de todos ----------
+window.ajustarPrazo = async btn => {
+  const m = Number($("aj-meses").value);
+  if (!m || m < 1) { $("aj-msg").innerHTML = '<span style="color:var(--bad)">Coloque um número de meses.</span>'; return; }
+  if (btn.dataset.conf !== "1") { btn.dataset.conf = "1"; btn.textContent = "Clique de novo pra confirmar (" + m + " meses)"; return; }
+  btn.disabled = true; btn.textContent = "Ajustando...";
+  let n = 0, pulados = 0, k = 0, batch = writeBatch(db);
+  for (const c of clientes) {
+    const tr = c.trocas || [];
+    if (!tr.length) continue;
+    const u = tr.slice().sort((a,b) => a.data.localeCompare(b.data)).pop();
+    const auto = addMeses(u.data, u.meses || PRAZO_PADRAO);
+    if (c.agendado || c.proximoContato !== auto) { pulados++; continue; }
+    batch.update(doc(db, "clientes", c.id), { trocas: tr.map(t => ({...t, meses: m})), proximoContato: addMeses(u.data, m) });
+    n++;
+    if (++k === 400) { await batch.commit(); batch = writeBatch(db); k = 0; }
+  }
+  if (k) await batch.commit();
+  $("aj-msg").innerHTML = `<span style="color:var(--ok)">✅ ${n} cliente(s) ajustado(s) pra ${m} meses.</span>` +
+    (pulados ? `<br><span class="sub">${pulados} não foram mexidos (já tinham contato, agendamento ou data editada).</span>` : "");
+  btn.disabled = false; btn.dataset.conf = ""; btn.textContent = "Ajustar todos";
 };
 
 // ---------- importar / exportar ----------
