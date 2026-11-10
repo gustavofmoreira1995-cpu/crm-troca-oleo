@@ -106,7 +106,7 @@
       </select>
       <input id="busca" placeholder="Digite a placa..." oninput="renderClientes()">
       <select id="f-status" onchange="renderClientes()" style="width:auto">
-        <option value="">Todos</option><option value="ativo">Ativos</option><option value="perdido">Trocou em outro lugar</option><option value="inativo">Não quer mais contato</option>
+        <option value="">Todos</option><option value="ativo">Ativos</option><option value="perdido">Trocou em outro lugar</option><option value="inativo">Não quer mais contato</option><option value="arquivado">Arquivados (antigos)</option>
       </select>
       <button class="btn btn-primary" onclick="abrirNovo()">+ Novo cliente</button>
     </div>
@@ -157,6 +157,14 @@
       <input id="aj-meses" type="number" value="7" style="max-width:120px">
       <button class="btn btn-primary" style="margin-top:12px" onclick="ajustarPrazo(this)">Ajustar todos</button>
       <div id="aj-msg" class="msg"></div>
+    </div>
+    <div class="item" style="display:block;margin-top:10px">
+      <b>Arquivar atrasados antigos</b>
+      <p class="sub">Tira da lista de contatos os clientes atrasados há mais de X dias (ex.: os antigos da importação, que provavelmente já trocaram em outro lugar). Eles continuam na aba Clientes, no filtro "Arquivados". Se um deles voltar e você lançar a troca, ele volta a ser ativo sozinho.<br><b>Faça depois do "Ajustar prazo".</b></p>
+      <label>Arquivar quem está atrasado há mais de (dias)</label>
+      <input id="arq-dias" type="number" value="30" style="max-width:120px">
+      <button class="btn btn-primary" style="margin-top:12px" onclick="arquivarAntigos(this)">Arquivar</button>
+      <div id="arq-msg" class="msg"></div>
     </div>
     <div class="item" style="display:block;margin-top:10px">
       <b>Backup</b>
@@ -305,7 +313,7 @@ window.renderClientes = () => {
   };
   const l = clientes.filter(c => (!st || c.status === st) && bate(c))
     .sort((a,b) => (a.nome||"").localeCompare(b.nome||""));
-  const nomes = {ativo:["Ativo","t-ok"], perdido:["Trocou fora","t-bad"], inativo:["Sem contato","t-mut"]};
+  const nomes = {ativo:["Ativo","t-ok"], perdido:["Trocou fora","t-bad"], inativo:["Sem contato","t-mut"], arquivado:["Arquivado","t-mut"]};
   $("lista-clientes").innerHTML = l.length ? l.map(c => {
     const u = ultimaTroca(c), n = nomes[c.status] || nomes.ativo;
     return `<div class="item"><div class="info" onclick="abrirCliente('${c.id}')">
@@ -508,7 +516,8 @@ window.modalEditar = id => {
     <label>Situação</label><select id="e-st">
       <option value="ativo" ${c.status==="ativo"?"selected":""}>Ativo</option>
       <option value="perdido" ${c.status==="perdido"?"selected":""}>Trocou em outro lugar</option>
-      <option value="inativo" ${c.status==="inativo"?"selected":""}>Não quer mais contato</option></select>
+      <option value="inativo" ${c.status==="inativo"?"selected":""}>Não quer mais contato</option>
+      <option value="arquivado" ${c.status==="arquivado"?"selected":""}>Arquivado (antigo)</option></select>
     <label>Observações</label><textarea id="e-obs" rows="2">${esc(c.obs||"")}</textarea>
     <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarEdicao('${id}')">Salvar</button><button class="btn" onclick="abrirCliente('${id}')">Voltar</button></div>`);
 };
@@ -573,7 +582,7 @@ window.renderIndicadores = () => {
         }
       }
       const due = addMeses(t.data, t.meses || PRAZO_PADRAO);
-      if (dentro(due) && due <= h) {
+      if (dentro(due) && due <= h && c.status !== "arquivado") {
         venc++;
         const voltou = trocas.some(o => o.data > addDias(t.data, 15));
         if (voltou) recup++;
@@ -689,6 +698,24 @@ window.ajustarPrazo = async btn => {
   btn.disabled = false; btn.dataset.conf = ""; btn.textContent = "Ajustar todos";
 };
 
+// ---------- arquivar atrasados antigos ----------
+window.arquivarAntigos = async btn => {
+  const dias = Number($("arq-dias").value);
+  if (!dias || dias < 1) { $("arq-msg").innerHTML = '<span style="color:var(--bad)">Coloque o número de dias.</span>'; return; }
+  const limite = addDias(hoje(), -dias);
+  const alvo = clientes.filter(c => c.status === "ativo" && c.proximoContato && c.proximoContato < limite && !(c.agendado && c.agendado >= hoje()));
+  if (btn.dataset.conf !== "1") { btn.dataset.conf = "1"; btn.textContent = `Clique de novo pra arquivar ${alvo.length} cliente(s)`; return; }
+  btn.disabled = true; btn.textContent = "Arquivando...";
+  let k = 0, batch = writeBatch(db);
+  for (const c of alvo) {
+    batch.update(doc(db, "clientes", c.id), { status: "arquivado" });
+    if (++k === 400) { await batch.commit(); batch = writeBatch(db); k = 0; }
+  }
+  if (k) await batch.commit();
+  $("arq-msg").innerHTML = `<span style="color:var(--ok)">✅ ${alvo.length} cliente(s) arquivado(s). Eles estão na aba Clientes, filtro "Arquivados".</span>`;
+  btn.disabled = false; btn.dataset.conf = ""; btn.textContent = "Arquivar";
+};
+
 // ---------- importar / exportar ----------
 window.importar = async () => {
   const linhas = $("imp-txt").value.split("\n").map(l => l.replace(/\r/g,"")).filter(l => l.trim());
@@ -724,7 +751,7 @@ window.importar = async () => {
       if (!add.length) continue;
       const todas = [...(ex.trocas||[]), ...add].sort((a,b) => a.data.localeCompare(b.data));
       const u = todas[todas.length-1];
-      batch.update(doc(db, "clientes", ex.id), {trocas: todas, proximoContato: addMeses(u.data, u.meses), agendado: null});
+      batch.update(doc(db, "clientes", ex.id), {trocas: todas, proximoContato: addMeses(u.data, u.meses), agendado: null, status: "ativo"});
       atualizados++;
     } else {
       batch.set(doc(COL), {nome: g.nome, telefone: g.telefone, veiculo: g.veiculo, placa: g.placa, obs: "", status: "ativo",
