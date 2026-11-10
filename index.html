@@ -554,7 +554,7 @@ window.renderIndicadores = () => {
 
   let tro = 0, ret = 0, fat = 0, fatRet = 0, fatNovo = 0;
   let venc = 0, recup = 0, cob = 0;
-  let nCont = 0, trocasCRM = 0, receitaCRM = 0;
+  let nCont = 0, trocasCRM = 0, receitaCRM = 0, recResp = 0, recSem = 0, troResp = 0, troSem = 0;
   let agendTot = 0, agendFech = 0, compar = 0;
   const contatados = new Map(), res = {}, agendCli = new Set();
 
@@ -566,7 +566,11 @@ window.renderIndicadores = () => {
       if (dentro(t.data)) {
         tro++; fat += v;
         if (trocas.some(o => o.data <= addDias(t.data, -15))) { ret++; fatRet += v; } else fatNovo += v;
-        if (conts.some(x => x.data <= t.data && x.data >= addDias(t.data, -30))) { trocasCRM++; receitaCRM += v; }
+        const janela = conts.filter(x => x.data <= t.data && x.data >= addDias(t.data, -30));
+        if (janela.length) {
+          trocasCRM++; receitaCRM += v;
+          if (janela.some(x => x.resultado !== "Não respondeu")) { recResp += v; troResp++; } else { recSem += v; troSem++; }
+        }
       }
       const due = addMeses(t.data, t.meses || PRAZO_PADRAO);
       if (dentro(due) && due <= h) {
@@ -606,7 +610,7 @@ window.renderIndicadores = () => {
   $("ind-crm").innerHTML =
     kpiHTML("ok", pct(recup, venc), "Taxa de recuperação", `${recup} de ${venc} vencidos voltaram`) +
     kpiHTML("blue", pct(conv, nCli), "Conversão do contato", `${conv} de ${nCli} contatados trocaram em até 30 dias`) +
-    kpiHTML("ok", money0(receitaCRM), "Receita via CRM", `${trocasCRM} troca(s) depois de um contato`) +
+    kpiHTML("ok", money0(receitaCRM), "Receita via CRM", `${trocasCRM} troca(s) depois de um contato<br>✅ Com resposta: ${money0(recResp)} (${troResp})<br>📵 Sem resposta: ${money0(recSem)} (${troSem})`) +
     kpiHTML("bad", pct(fora, nCli), "Perdidos pra concorrência", `${fora} disseram que trocaram fora`);
 
   $("ind-equipe").innerHTML =
