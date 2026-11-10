@@ -84,7 +84,10 @@
   <!-- CLIENTES -->
   <section id="sec-clientes" style="display:none">
     <div class="bar">
-      <input id="busca" placeholder="Buscar por nome, telefone ou placa..." oninput="renderClientes()">
+      <select id="busca-tipo" onchange="trocaBusca()" style="width:auto">
+        <option value="placa">🚗 Placa</option><option value="nome">👤 Nome</option><option value="tel">📱 Telefone</option>
+      </select>
+      <input id="busca" placeholder="Digite a placa..." oninput="renderClientes()">
       <select id="f-status" onchange="renderClientes()" style="width:auto">
         <option value="">Todos</option><option value="ativo">Ativos</option><option value="perdido">Trocou em outro lugar</option><option value="inativo">Não quer mais contato</option>
       </select>
@@ -222,13 +225,22 @@ function itemHTML(c){
 }
 
 // ---------- lista de clientes ----------
+window.trocaBusca = () => {
+  const t = $("busca-tipo").value;
+  $("busca").placeholder = t === "placa" ? "Digite a placa..." : t === "nome" ? "Digite o nome..." : "Digite o telefone...";
+  $("busca").value = ""; $("busca").focus(); renderClientes();
+};
+
 window.renderClientes = () => {
-  const q = $("busca").value.toLowerCase().trim(), st = $("f-status").value;
-  // só procura no telefone se a busca for só números (sem letras)
-  const qn = /[a-z]/i.test(q) ? "" : soNum(q);
-  const qp = q.replace(/[^a-z0-9]/g, "");
-  const l = clientes.filter(c => (!st || c.status === st) && (!q ||
-      (c.nome||"").toLowerCase().includes(q) || (qp && (c.placa||"").toLowerCase().includes(qp)) || (qn && soNum(c.telefone).includes(qn))))
+  const q = $("busca").value.toLowerCase().trim(), st = $("f-status").value, tipo = $("busca-tipo").value;
+  const qp = q.replace(/[^a-z0-9]/g, ""), qn = soNum(q);
+  const bate = c => {
+    if (!q) return true;
+    if (tipo === "placa") return !!qp && (c.placa||"").toLowerCase().includes(qp);
+    if (tipo === "tel") return !!qn && soNum(c.telefone).includes(qn);
+    return (c.nome||"").toLowerCase().includes(q);
+  };
+  const l = clientes.filter(c => (!st || c.status === st) && bate(c))
     .sort((a,b) => (a.nome||"").localeCompare(b.nome||""));
   const nomes = {ativo:["Ativo","t-ok"], perdido:["Trocou fora","t-bad"], inativo:["Sem contato","t-mut"]};
   $("lista-clientes").innerHTML = l.length ? l.map(c => {
