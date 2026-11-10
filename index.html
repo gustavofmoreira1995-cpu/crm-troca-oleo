@@ -80,14 +80,14 @@
 </header>
 <main>
   <div class="tabs">
-    <div class="tab on" data-tab="contatos" onclick="aba('contatos')">📞 Contatos</div>
+    <div class="tab on" data-tab="indicadores" onclick="aba('indicadores')">📊 Indicadores</div>
+    <div class="tab" data-tab="contatos" onclick="aba('contatos')">📞 Contatos</div>
     <div class="tab" data-tab="clientes" onclick="aba('clientes')">👥 Clientes</div>
-    <div class="tab" data-tab="indicadores" onclick="aba('indicadores')">📊 Indicadores</div>
     <div class="tab" data-tab="importar" onclick="aba('importar')">📥 Importar / Backup</div>
   </div>
 
   <!-- CONTATOS -->
-  <section id="sec-contatos">
+  <section id="sec-contatos" style="display:none">
     <div class="cards">
       <div class="kpi bad" data-f="atrasados" onclick="filtro('atrasados')"><b id="k-atr">0</b><small>Atrasados</small></div>
       <div class="kpi warn" data-f="semana" onclick="filtro('semana')"><b id="k-sem">0</b><small>Vencem nesta semana</small></div>
@@ -114,7 +114,7 @@
   </section>
 
   <!-- INDICADORES -->
-  <section id="sec-indicadores" style="display:none">
+  <section id="sec-indicadores">
     <div class="bar" style="align-items:center">
       <span class="sub" style="margin:0">Período</span>
       <select id="ind-per" onchange="renderIndicadores()" style="width:auto">
