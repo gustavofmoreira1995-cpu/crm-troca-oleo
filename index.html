@@ -98,7 +98,7 @@
     <div class="item" style="display:block">
       <b>Importar clientes</b>
       <p class="sub">Cole abaixo a lista (pode copiar direto do Excel). Uma linha por cliente, nesta ordem de colunas:<br>
-      <b>Nome · Telefone · Veículo · Placa · Data da troca (dd/mm/aaaa) · Serviço · Valor · KM</b></p>
+      <b>Nome · Telefone · Veículo · Placa · Data da troca (dd/mm/aaaa) · Serviço · Valor · KM</b><br>Pode colar todas as trocas: o sistema junta as do mesmo carro (placa) num cliente só, e não duplica quem já foi importado.</p>
       <textarea id="imp-txt" rows="8" placeholder="João da Silva	42999998888	Gol	ABC1D23	15/03/2026	Óleo 5W30 + filtro	180	85000"></textarea>
       <label>Avisar quantos meses depois da troca?</label>
       <input id="imp-meses" type="number" value="6" style="max-width:120px">
@@ -422,24 +422,52 @@ window.excluir = async id => {
 
 // ---------- importar / exportar ----------
 window.importar = async () => {
-  const linhas = $("imp-txt").value.split("\n").map(l => l.trim()).filter(Boolean);
+  const linhas = $("imp-txt").value.split("\n").map(l => l.replace(/\r/g,"")).filter(l => l.trim());
   const meses = Number($("imp-meses").value || PRAZO_PADRAO);
-  let ok = 0, erro = [];
-  let batch = writeBatch(db), n = 0;
-  for (const [i, l] of linhas.entries()) {
+  const erro = [];
+  // agrupa as linhas pelo veículo (placa); sem placa, pelo telefone; sem os dois, pelo nome
+  const grupos = new Map();
+  linhas.forEach((l, i) => {
     const p = l.split(/\t|;/).map(x => x.trim());
     const data = dataBRparaISO(p[4]);
-    if (!p[0] || !data) { erro.push(i+1); continue; }
+    if (!p[0] || !data) { erro.push(i+1); return; }
+    const placa = (p[3]||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+    const tel = soNum(p[1]);
+    const chave = placa && placa !== "AAAA999" ? "P" + placa : tel ? "T" + tel : "N" + p[0].toUpperCase();
     const t = {data, servico: p[5]||"", valor: Number(String(p[6]||"0").replace("R$","").replace(/\./g,"").replace(",",".")) || 0, km: p[7]||"", meses};
-    batch.set(doc(COL), {nome: p[0], telefone: p[1]||"", veiculo: p[2]||"", placa: (p[3]||"").toUpperCase(), obs: "", status: "ativo",
-      trocas: [t], contatos: [], proximoContato: addMeses(data, meses), criadoEm: hoje()});
-    ok++; n++;
-    if (n === 400) { await batch.commit(); batch = writeBatch(db); n = 0; }
+    const g = grupos.get(chave) || {nome: p[0], telefone: p[1]||"", veiculo: p[2]||"", placa: placa === "AAAA999" ? "" : placa, trocas: []};
+    // dados mais recentes ganham
+    if (!g.ultima || data >= g.ultima) { g.ultima = data; g.nome = p[0] || g.nome; if (p[1]) g.telefone = p[1]; if (p[2]) g.veiculo = p[2]; }
+    g.trocas.push(t);
+    grupos.set(chave, g);
+  });
+  // clientes que já existem (pela placa) recebem as trocas novas em vez de duplicar
+  const existentes = new Map(clientes.filter(c => c.placa).map(c => [c.placa, c]));
+  let novos = 0, atualizados = 0, batch = writeBatch(db), n = 0;
+  for (const g of grupos.values()) {
+    g.trocas.sort((a,b) => a.data.localeCompare(b.data));
+    const ult = g.trocas[g.trocas.length-1];
+    const prox = addMeses(ult.data, ult.meses);
+    const ex = g.placa && existentes.get(g.placa);
+    if (ex) {
+      const ja = new Set((ex.trocas||[]).map(t => t.data + "|" + t.valor));
+      const add = g.trocas.filter(t => !ja.has(t.data + "|" + t.valor));
+      if (!add.length) continue;
+      const todas = [...(ex.trocas||[]), ...add].sort((a,b) => a.data.localeCompare(b.data));
+      const u = todas[todas.length-1];
+      batch.update(doc(db, "clientes", ex.id), {trocas: todas, proximoContato: addMeses(u.data, u.meses)});
+      atualizados++;
+    } else {
+      batch.set(doc(COL), {nome: g.nome, telefone: g.telefone, veiculo: g.veiculo, placa: g.placa, obs: "", status: "ativo",
+        trocas: g.trocas, contatos: [], proximoContato: prox, criadoEm: hoje()});
+      novos++;
+    }
+    if (++n === 400) { await batch.commit(); batch = writeBatch(db); n = 0; }
   }
   if (n) await batch.commit();
-  $("imp-msg").innerHTML = `<span style="color:var(--ok)">✅ ${ok} cliente(s) importado(s).</span>` +
+  $("imp-msg").innerHTML = `<span style="color:var(--ok)">✅ ${novos} cliente(s) novo(s), ${atualizados} atualizado(s), ${linhas.length - erro.length} troca(s) lida(s).</span>` +
     (erro.length ? `<br><span style="color:var(--bad)">Linhas com problema (sem nome ou data inválida): ${erro.join(", ")}</span>` : "");
-  if (ok) $("imp-txt").value = "";
+  $("imp-txt").value = "";
 };
 
 window.exportar = () => {
