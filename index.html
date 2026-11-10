@@ -47,6 +47,10 @@
   .hist{background:var(--bg);border-radius:8px;padding:10px;margin-top:8px;font-size:13px;max-height:200px;overflow:auto}
   .hist div{padding:5px 0;border-bottom:1px solid var(--line)}
   .hist div:last-child{border:none}
+  .hl{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .lixo{background:none;border:none;cursor:pointer;font-size:14px;opacity:.5;padding:2px 6px;border-radius:6px;color:var(--txt)}
+  .lixo:hover{opacity:1}
+  .lixo.conf{opacity:1;background:var(--bad);color:#fff;font-size:12px;font-weight:700}
   .empty{color:var(--mut);text-align:center;padding:30px}
   #login{max-width:360px;margin:80px auto;background:var(--card);padding:24px;border-radius:14px;border:1px solid var(--line)}
   .msg{font-size:13px;margin-top:8px}
@@ -318,8 +322,8 @@ function alertaCampo(){ const b = $("modal").querySelector(".btn-primary"); b.te
 
 window.abrirCliente = id => {
   const c = get(id); if(!c) return;
-  const trocas = (c.trocas||[]).slice().sort((a,b)=>b.data.localeCompare(a.data));
-  const conts = (c.contatos||[]).slice().reverse();
+  const trocas = (c.trocas||[]).map((t,i)=>({...t,_i:i})).sort((a,b)=>b.data.localeCompare(a.data));
+  const conts = (c.contatos||[]).map((x,i)=>({...x,_i:i})).reverse();
   const total = trocas.reduce((s,t)=>s+Number(t.valor||0),0);
   abrir(`
     <h2>${esc(c.nome)}</h2>
@@ -333,13 +337,27 @@ window.abrirCliente = id => {
       <button class="btn btn-sm" onclick="modalEditar('${id}')">Editar</button>
     </div>
     <label>Trocas (${trocas.length})</label>
-    <div class="hist">${trocas.map(t=>`<div>${br(t.data)} · ${esc(t.servico||"-")} · ${money(t.valor)}${t.km?" · "+esc(t.km)+" km":""}</div>`).join("") || "Nenhuma"}</div>
+    <div class="hist">${trocas.map(t=>`<div class="hl"><span>${br(t.data)} · ${esc(t.servico||"-")} · ${money(t.valor)}${t.km?" · "+esc(t.km)+" km":""}</span><button class="lixo" title="Apagar troca" onclick="apagarItem('${id}','trocas',${t._i},this)">🗑️</button></div>`).join("") || "Nenhuma"}</div>
     <label>Contatos (${conts.length})</label>
-    <div class="hist">${conts.map(x=>`<div>${br(x.data)} · <b>${esc(x.resultado)}</b>${x.nota?" — "+esc(x.nota):""}</div>`).join("") || "Nenhum ainda"}</div>
+    <div class="hist">${conts.map(x=>`<div class="hl"><span>${br(x.data)} · <b>${esc(x.resultado)}</b>${x.nota?" — "+esc(x.nota):""}</span><button class="lixo" title="Apagar contato" onclick="apagarItem('${id}','contatos',${x._i},this)">🗑️</button></div>`).join("") || "Nenhum ainda"}</div>
     <div class="acts" style="margin-top:14px;justify-content:space-between">
       <button class="btn" onclick="fechar()">Fechar</button>
       <button class="btn btn-bad btn-sm" onclick="excluir('${id}')">Excluir cliente</button>
     </div>`);
+};
+
+// ---------- apagar troca ou contato lançado por engano ----------
+window.apagarItem = async (id, campo, idx, btn) => {
+  if (btn.dataset.conf !== "1") { btn.dataset.conf = "1"; btn.textContent = "Apagar?"; btn.classList.add("conf"); return; }
+  const c = get(id);
+  const lista = (c[campo]||[]).filter((_, i) => i !== idx);
+  const upd = {[campo]: lista};
+  if (campo === "trocas" && lista.length) {
+    const u = lista.slice().sort((a,b) => a.data.localeCompare(b.data)).pop();
+    upd.proximoContato = addMeses(u.data, u.meses || PRAZO_PADRAO);
+  }
+  await updateDoc(doc(db, "clientes", id), upd);
+  abrirCliente(id);
 };
 
 // ---------- WhatsApp ----------
