@@ -670,16 +670,28 @@ window.renderIndicadores = () => {
   const labels = meses.map(m => nomesMes[+m.slice(5) - 1] + "/" + m.slice(2, 4));
   if (typeof Chart === "undefined") return;
   if (chartMes) chartMes.destroy();
+  const totais = novos.map((n, i) => n + rets[i]);
+  const totalNoTopo = {
+    id: "totalNoTopo",
+    afterDatasetsDraw(ch) {
+      const meta = ch.getDatasetMeta(1), ctx = ch.ctx;
+      ctx.save(); ctx.fillStyle = "#e8eaee"; ctx.font = "bold 12px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      meta.data.forEach((bar, i) => { if (totais[i]) ctx.fillText(totais[i], bar.x, bar.y - 4); });
+      ctx.restore();
+    }
+  };
   chartMes = new Chart($("ind-chart"), {
+    plugins: [totalNoTopo],
     data: { labels, datasets: [
       { type: "bar", label: "Clientes novos", data: novos, backgroundColor: "#4b5563", stack: "t" },
       { type: "bar", label: "Retornos", data: rets, backgroundColor: "#f5a524", stack: "t" },
       { type: "line", label: "Retornos via CRM", data: viaCrm, borderColor: "#22c55e", backgroundColor: "#22c55e", tension: .3 }
     ]},
     options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: "#e8eaee" } } },
+      plugins: { legend: { labels: { color: "#e8eaee" } },
+        tooltip: { callbacks: { footer: items => "Total no mês: " + totais[items[0].dataIndex] } } },
       scales: { x: { stacked: true, ticks: { color: "#9aa1ad" }, grid: { color: "#2a2f3a" } },
-                y: { stacked: true, beginAtZero: true, ticks: { color: "#9aa1ad", precision: 0 }, grid: { color: "#2a2f3a" } } } }
+                y: { stacked: true, beginAtZero: true, grace: "10%", ticks: { color: "#9aa1ad", precision: 0 }, grid: { color: "#2a2f3a" } } } }
   });
 };
 
