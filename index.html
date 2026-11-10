@@ -196,6 +196,9 @@ const firebaseConfig = {
 // Prazo padrão (meses) entre uma troca e o próximo contato
 const PRAZO_PADRAO = 7;
 
+// Data em que o CRM começou a ser usado (a cobertura só conta a partir daqui)
+const CRM_INICIO = "2026-11-10";
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const COL = collection(db, "clientes");
@@ -562,7 +565,7 @@ window.renderIndicadores = () => {
   $("ind-datas").textContent = ini === "2000-01-01" ? "" : br(ini) + " a " + br(fim);
 
   let tro = 0, ret = 0, fat = 0, fatRet = 0, fatNovo = 0;
-  let venc = 0, recup = 0, cob = 0;
+  let venc = 0, recup = 0, cob = 0, vencCRM = 0;
   let nCont = 0, trocasCRM = 0, receitaCRM = 0, recResp = 0, recSem = 0, troResp = 0, troSem = 0;
   let agendTot = 0, agendFech = 0, compar = 0;
   const contatados = new Map(), res = {}, agendCli = new Set();
@@ -582,11 +585,12 @@ window.renderIndicadores = () => {
         }
       }
       const due = addMeses(t.data, t.meses || PRAZO_PADRAO);
-      if (dentro(due) && due <= h && c.status !== "arquivado") {
+      if (dentro(due) && due <= h) {
         venc++;
         const voltou = trocas.some(o => o.data > addDias(t.data, 15));
         if (voltou) recup++;
-        if (voltou || conts.some(x => x.data >= addDias(due, -15))) cob++;
+        // cobertura só conta vencimentos desde que o CRM começou a ser usado
+        if (due >= CRM_INICIO) { vencCRM++; if (voltou || conts.some(x => x.data >= addDias(due, -15))) cob++; }
       }
     });
     conts.forEach(x => {
@@ -624,7 +628,7 @@ window.renderIndicadores = () => {
 
   $("ind-equipe").innerHTML =
     kpiHTML("blue", nCont, "Contatos registrados", `${nCli} cliente(s) diferentes`) +
-    kpiHTML(venc && cob / venc < 0.7 ? "warn" : "ok", pct(cob, venc), "Cobertura", "vencidos que foram contatados ou já voltaram") +
+    kpiHTML(vencCRM && cob / vencCRM < 0.7 ? "warn" : "ok", pct(cob, vencCRM), "Cobertura", `${cob} de ${vencCRM} vencidos (desde ${br(CRM_INICIO)}) foram contatados ou já voltaram`) +
     kpiHTML("agd", pct(compar, agendFech), "Comparecimento", `${compar} de ${agendFech} agendados vieram`) +
     kpiHTML(fila.length ? "bad" : "ok", fila.length, "Fila de atrasados hoje", fila.length ? `esperando, em média, ${espera} dia(s)` : "fila zerada 👏");
 
