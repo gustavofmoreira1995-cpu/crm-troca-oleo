@@ -125,6 +125,10 @@
         <option value="3m" selected>Últimos 3 meses</option><option value="6m">Últimos 6 meses</option>
         <option value="ano">Este ano</option><option value="12m">Últimos 12 meses</option><option value="tudo">Tudo</option>
       </select>
+      <span class="sub" style="margin:0 0 0 10px">Veículo</span>
+      <select id="ind-tipo" onchange="renderIndicadores()" style="width:auto">
+        <option value="">Todos</option><option value="carro">🚗 Carros</option><option value="moto">🏍️ Motos</option>
+      </select>
       <span id="ind-datas" class="sub" style="margin:0"></span>
     </div>
     <h3 class="ind-h">🎯 Resultado do CRM</h3>
@@ -138,7 +142,7 @@
     <h3 class="ind-h">📈 Visão geral</h3>
     <div class="cards" id="ind-geral"></div>
     <div class="painel"><b>Trocas por mês (últimos 12 meses)</b><div style="position:relative;height:260px;margin-top:10px"><canvas id="ind-chart"></canvas></div></div>
-    <p class="sub" style="margin-top:14px">ℹ️ <b>Retorno</b> = a placa já tinha uma troca antes. <b>Sem cadastro</b> = venda bazar (cliente não identificado), conta na quantidade e no faturamento, mas não na taxa de retorno. <b>Via CRM</b> = troca feita até 30 dias depois de um contato registrado. O histórico começa em nov/2025 (dados importados).</p>
+    <p class="sub" style="margin-top:14px">ℹ️ <b>Retorno</b> = a placa já tinha uma troca antes. <b>Sem cadastro</b> = venda bazar (cliente não identificado), conta na quantidade e no faturamento, mas não na taxa de retorno. Vendas bazar antigas sem tipo marcado: abaixo de R$ 50 contam como moto. <b>Via CRM</b> = troca feita até 30 dias depois de um contato registrado. O histórico começa em nov/2025 (dados importados).</p>
   </section>
 
   <!-- IMPORTAR -->
@@ -216,6 +220,8 @@ const firebaseConfig = {
 
 // Prazo padrão (meses) entre uma troca e o próximo contato
 const PRAZO_PADRAO = 7;
+// Prazo pra moto: mesmo dos carros
+const PRAZO_MOTO = PRAZO_PADRAO;
 
 // Data em que o CRM começou a ser usado (a cobertura só conta a partir daqui)
 const CRM_INICIO = "2026-11-10";
@@ -246,6 +252,13 @@ const soNum = s => String(s||"").replace(/\D/g, "");
 const fimSemana = () => { const d = new Date(); d.setDate(d.getDate() + (7 - d.getDay()) % 7); return iso(d); };
 const fimMes = () => { const d = new Date(); return iso(new Date(d.getFullYear(), d.getMonth()+1, 0)); };
 const dataBRparaISO = s => { const m = String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(!m) return null; let y = +m[3]; if(y<100) y+=2000; return y + "-" + pad(m[2]) + "-" + pad(m[1]); };
+
+// carro ou moto: usa o que foi marcado; se não tiver, tenta descobrir pelo modelo
+const RX_MOTO = /\b(BIZ|CG|CB|CBX|BROS|NXR|SAHARA|XTZ|YBR|FACTOR|TITAN|FAN|POP|XRE|FAZER|LANDER|NMAX|PCX|TWISTER|CRYPTON|NEO|ELITE|LEAD|XR|CRF|TORNADO|BURGMAN|INTRUDER|DUKE|TENERE|CROSSER|XJ6|HORNET)\b/i;
+const tipoDe = c => c.tipo || (RX_MOTO.test(c.veiculo || "") ? "moto" : "carro");
+// venda bazar sem tipo marcado (as importadas): abaixo de R$ 50 consideramos moto
+const tipoAv = a => a.tipo || (Number(a.valor || 0) < 50 ? "moto" : "carro");
+const icone = t => t === "moto" ? "🏍️" : "🚗";
 
 function ultimaTroca(c){ return (c.trocas||[]).slice().sort((a,b)=>b.data.localeCompare(a.data))[0]; }
 
@@ -319,7 +332,7 @@ function itemHTML(c){
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
       <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}</div>
-      <div class="sub">📱 ${esc(c.telefone||"-")} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
+      <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
     <div class="acts">
@@ -352,7 +365,7 @@ window.renderClientes = () => {
     const u = ultimaTroca(c), n = nomes[c.status] || nomes.ativo;
     return `<div class="item"><div class="info" onclick="abrirCliente('${c.id}')">
       <div class="nome">${esc(c.nome)} <span class="tag ${n[1]}">${n[0]}</span></div>
-      <div class="sub">📱 ${esc(c.telefone||"-")} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")} · ${(c.trocas||[]).length} troca(s)</div>
+      <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")} · ${(c.trocas||[]).length} troca(s)</div>
       <div class="sub">Última: ${u ? br(u.data) : "-"} · Próximo contato: ${c.status==="ativo" ? br(c.proximoContato) : "-"}</div>
     </div></div>`;
   }).join("") : '<div class="empty">Nenhum cliente encontrado.</div>';
@@ -400,6 +413,11 @@ window.abrirNovo = () => abrir(`
   </div>
   </div>
   <div id="bloco-bazar" class="aviso warn" style="display:none">🛒 Essa troca entra nos <b>relatórios</b> (quantidade e faturamento), mas <b>não vira cliente</b> e não aparece na lista de contatos.</div>
+  <label>Tipo de veículo *</label>
+  <div class="checks">
+    <label class="chk"><input type="radio" name="c-tipo" value="carro" onchange="trocaTipoVeic()"> 🚗 Carro</label>
+    <label class="chk"><input type="radio" name="c-tipo" value="moto" onchange="trocaTipoVeic()"> 🏍️ Moto</label>
+  </div>
   <h3 style="margin:16px 0 0;font-size:15px">Troca de óleo</h3>
   ${camposTroca()}
   <label>Observações</label><textarea id="c-obs" rows="2"></textarea>
@@ -430,6 +448,9 @@ function faltasTroca(){
   return f;
 }
 
+const tipoMarcado = () => (document.querySelector('input[name="c-tipo"]:checked') || {}).value || "";
+window.trocaTipoVeic = () => { $("t-meses").value = tipoMarcado() === "moto" ? PRAZO_MOTO : PRAZO_PADRAO; };
+
 window.trocaBazar = () => {
   const b = $("c-bazar").checked;
   $("bloco-cliente").style.display = b ? "none" : "block";
@@ -438,16 +459,18 @@ window.trocaBazar = () => {
 };
 
 window.salvarNovo = async (forcar) => {
+  const tipo = tipoMarcado();
   if ($("c-bazar").checked) {
-    if (!conferir([], faltasTroca(), forcar, "salvarNovo(true)")) return;
+    if (!conferir(tipo ? [] : ["Carro ou moto"], faltasTroca(), forcar, "salvarNovo(true)")) return;
     const t = lerTroca();
-    await addDoc(AVUL, {data: t.data, valor: t.valor, servico: t.servico, km: t.km, obs: $("c-obs").value.trim(), criadoEm: hoje()});
+    await addDoc(AVUL, {data: t.data, valor: t.valor, servico: t.servico, km: t.km, tipo, obs: $("c-obs").value.trim(), criadoEm: hoje()});
     fechar(); return;
   }
   const nome = $("c-nome").value.trim(), tel = $("c-tel").value.trim();
   const modelo = $("c-veic").value.trim(), ano = $("c-ano").value.trim();
   const obrig = [];
   if (!nome) obrig.push("Nome");
+  if (!tipo) obrig.push("Carro ou moto");
   if (!tel) obrig.push("Telefone");
   const faltas = [];
   const dig = soNum(tel).length;
@@ -465,13 +488,13 @@ window.salvarNovo = async (forcar) => {
   if (existe) {
     const trocas = [...(existe.trocas||[]), t].sort((a,b) => a.data.localeCompare(b.data));
     const u = trocas[trocas.length-1];
-    await updateDoc(doc(db, "clientes", existe.id), {trocas, proximoContato: addMeses(u.data, u.meses), status: "ativo", agendado: null});
+    await updateDoc(doc(db, "clientes", existe.id), {trocas, proximoContato: addMeses(u.data, u.meses), status: "ativo", agendado: null, tipo});
     abrirCliente(existe.id);
     $("modal").insertAdjacentHTML("afterbegin", `<div style="background:#22c55e22;color:var(--ok);padding:10px;border-radius:8px;margin-bottom:12px;font-size:14px">✅ Essa placa já estava cadastrada. A troca foi adicionada no histórico deste cliente.</div>`);
     return;
   }
   await addDoc(COL, {
-    nome, telefone: tel, placa, veiculo,
+    nome, telefone: tel, placa, veiculo, tipo,
     obs: $("c-obs").value.trim(), status: "ativo",
     trocas: [t], contatos: [], proximoContato: addMeses(t.data, t.meses), criadoEm: hoje()
   });
@@ -485,7 +508,7 @@ window.abrirCliente = id => {
   const total = trocas.reduce((s,t)=>s+Number(t.valor||0),0);
   abrir(`
     <h2>${esc(c.nome)}</h2>
-    <div class="sub">📱 ${esc(c.telefone)} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
+    <div class="sub">📱 ${esc(c.telefone)} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
     <div class="sub">Próximo contato: <b>${c.status==="ativo" ? br(c.proximoContato) : "—"}</b> · Total gasto: <b>${money(total)}</b></div>
     ${tagAgenda(c) ? `<div style="margin-top:6px">${tagAgenda(c)}</div>` : ""}
     ${c.obs ? `<div class="sub">📝 ${esc(c.obs)}</div>` : ""}
@@ -534,6 +557,7 @@ window.whats = id => {
 // ---------- resultado do contato ----------
 window.modalResultado = id => {
   const c = get(id);
+  $("modal").dataset.cli = id;
   abrir(`
     <h2>Registrar contato — ${esc(c.nome)}</h2>
     <label>O que o cliente respondeu?</label>
@@ -559,7 +583,7 @@ window.trocaTipo = () => {
   else if (t === "semresp") ex.innerHTML = `<label>Tentar de novo em</label><input id="r-data" type="date" value="${addDias(hoje(),3)}">`;
   else if (t === "agendou") ex.innerHTML = `<label>Que dia ele vai vir?</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">
     <div class="sub" style="margin-top:6px">Se ele não vier até esse dia, aparece como <b style="color:var(--bad)">⚠️ Não compareceu</b> no dia seguinte.</div>`;
-  else if (t === "trocou") ex.innerHTML = camposTroca();
+  else if (t === "trocou") ex.innerHTML = camposTroca(tipoDe(get($("modal").dataset.cli)) === "moto" ? PRAZO_MOTO : PRAZO_PADRAO);
   else if (t === "fora") ex.innerHTML = `<label>Quando ele trocou fora? (pra chamar na próxima)</label><input id="r-data" type="date" value="${hoje()}">
     <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
     <label>Meses até a próxima</label><input id="r-meses" type="number" value="${PRAZO_PADRAO}">`;
@@ -587,7 +611,7 @@ window.salvarResultado = async id => {
 };
 
 // ---------- nova troca / editar / excluir ----------
-window.modalTroca = id => abrir(`<h2>Nova troca — ${esc(get(id).nome)}</h2>${camposTroca()}<div id="aviso"></div>
+window.modalTroca = id => abrir(`<h2>Nova troca — ${esc(get(id).nome)} ${icone(tipoDe(get(id)))}</h2>${camposTroca(tipoDe(get(id)) === "moto" ? PRAZO_MOTO : PRAZO_PADRAO)}<div id="aviso"></div>
   <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarTroca('${id}')">Salvar</button><button class="btn" onclick="abrirCliente('${id}')">Voltar</button></div>`);
 
 window.salvarTroca = async (id, forcar) => {
@@ -605,6 +629,7 @@ window.modalEditar = id => {
     <div><label>Placa</label><input id="e-placa" value="${esc(c.placa||"")}"></div></div>
     <div class="row"><div><label>Veículo (modelo)</label><input id="e-veic" value="${esc((c.veiculo||"").replace(/\s*\b(19|20)\d{2}$/, ""))}"></div>
     <div><label>Ano</label><input id="e-ano" type="number" value="${esc(((c.veiculo||"").match(/\b((19|20)\d{2})$/)||[])[1]||"")}"></div></div>
+    <label>Tipo de veículo</label><select id="e-tipo"><option value="carro" ${tipoDe(c)==="carro"?"selected":""}>🚗 Carro</option><option value="moto" ${tipoDe(c)==="moto"?"selected":""}>🏍️ Moto</option></select>
     <label>Próximo contato</label><input id="e-prox" type="date" value="${c.proximoContato||hoje()}">
     <label>Situação</label><select id="e-st">
       <option value="ativo" ${c.status==="ativo"?"selected":""}>Ativo</option>
@@ -618,7 +643,7 @@ window.modalEditar = id => {
 window.salvarEdicao = async id => {
   await updateDoc(doc(db, "clientes", id), {
     nome: $("e-nome").value.trim(), telefone: $("e-tel").value.trim(), placa: $("e-placa").value.trim().toUpperCase(),
-    veiculo: [$("e-veic").value.trim(), $("e-ano").value.trim()].filter(Boolean).join(" "), proximoContato: $("e-prox").value, status: $("e-st").value, obs: $("e-obs").value.trim()
+    veiculo: [$("e-veic").value.trim(), $("e-ano").value.trim()].filter(Boolean).join(" "), proximoContato: $("e-prox").value, status: $("e-st").value, tipo: $("e-tipo").value, obs: $("e-obs").value.trim()
   });
   abrirCliente(id);
 };
@@ -648,10 +673,21 @@ function periodo(){
 const kpiHTML = (cor, valor, titulo, det) =>
   `<div class="kpi static ${cor}"><b>${valor}</b><small>${titulo}</small>${det ? `<span class="det">${det}</span>` : ""}</div>`;
 
+function cardTipos(dentro){
+  const q = {carro: [0, 0], moto: [0, 0]};
+  clientes.forEach(c => (c.trocas||[]).forEach(t => { if (dentro(t.data)) { const k = tipoDe(c); q[k][0]++; q[k][1] += Number(t.valor||0); } }));
+  avulsas.forEach(a => { if (a.data && dentro(a.data)) { const k = tipoAv(a); q[k][0]++; q[k][1] += Number(a.valor||0); } });
+  const tk = k => q[k][0] ? money0(q[k][1] / q[k][0]) : "—";
+  return kpiHTML("blue", `🚗 ${q.carro[0]} · 🏍️ ${q.moto[0]}`, "Carros × Motos", `🚗 ${money0(q.carro[1])} (ticket ${tk("carro")})<br>🏍️ ${money0(q.moto[1])} (ticket ${tk("moto")})`);
+}
+
 window.renderIndicadores = () => {
   if (!$("sec-indicadores") || $("sec-indicadores").style.display === "none") return;
   const [ini, fim] = periodo(), h = hoje();
   const dentro = d => d >= ini && d <= fim;
+  const fT = $("ind-tipo").value;
+  const cls = clientes.filter(c => !fT || tipoDe(c) === fT);
+  const avs = avulsas.filter(a => !fT || tipoAv(a) === fT);
   $("ind-datas").textContent = ini === "2000-01-01" ? "" : br(ini) + " a " + br(fim);
 
   let tro = 0, ret = 0, fat = 0, fatRet = 0, fatNovo = 0;
@@ -660,7 +696,7 @@ window.renderIndicadores = () => {
   let agendTot = 0, agendFech = 0, compar = 0;
   const contatados = new Map(), res = {}, agendCli = new Set();
 
-  clientes.forEach(c => {
+  cls.forEach(c => {
     const trocas = (c.trocas||[]).slice().sort((a,b) => a.data.localeCompare(b.data));
     const conts = c.contatos || [];
     trocas.forEach(t => {
@@ -711,7 +747,7 @@ window.renderIndicadores = () => {
   const fora = res["Trocou em outro lugar"] || 0;
 
   // fila de hoje
-  const fila = clientes.filter(c => c.status === "ativo" && c.proximoContato && c.proximoContato <= h && !(c.agendado && c.agendado >= h));
+  const fila = cls.filter(c => c.status === "ativo" && c.proximoContato && c.proximoContato <= h && !(c.agendado && c.agendado >= h));
   const espera = fila.length ? Math.round(fila.reduce((s, c) => s - diasAte(c.proximoContato), 0) / fila.length) : 0;
 
   $("ind-crm").innerHTML =
@@ -738,20 +774,21 @@ window.renderIndicadores = () => {
   const ordemRes = Object.entries(res).sort((a,b) => b[1] - a[1]);
   $("ind-res").innerHTML = ordemRes.length ? ordemRes.map(([k, n]) => passo(k, n, nCont, cores[k] || "#9aa1ad")).join("") : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
-  const avP = avulsas.filter(a => a.data && dentro(a.data));
+  const avP = avs.filter(a => a.data && dentro(a.data));
   const nAv = avP.length, fatAv = avP.reduce((s, a) => s + Number(a.valor || 0), 0);
   $("ind-geral").innerHTML =
     kpiHTML("blue", tro + nAv, "Trocas no período", `${tro - ret} novos · ${ret} retornos · ${nAv} sem cadastro`) +
     kpiHTML("ok", pct(ret, tro), "Taxa de retorno", "das trocas com cliente identificado") +
     kpiHTML("blue", money0(fat + fatAv), "Faturamento", `retornos: ${money0(fatRet)} · sem cadastro: ${money0(fatAv)}`) +
+    cardTipos(dentro) +
     kpiHTML("warn", (tro - ret ? money0(fatNovo / (tro - ret)) : "—") + " / " + (ret ? money0(fatRet / ret) : "—"), "Ticket médio", "cliente novo / cliente que voltou");
 
   // gráfico 12 meses
   const meses = [], d0 = new Date();
   for (let i = 11; i >= 0; i--) { const d = new Date(d0.getFullYear(), d0.getMonth() - i, 1); meses.push(d.getFullYear() + "-" + pad(d.getMonth() + 1)); }
   const novos = meses.map(() => 0), rets = meses.map(() => 0), viaCrm = meses.map(() => 0), semCad = meses.map(() => 0);
-  avulsas.forEach(a => { const i = meses.indexOf((a.data || "").slice(0, 7)); if (i >= 0) semCad[i]++; });
-  clientes.forEach(c => {
+  avs.forEach(a => { const i = meses.indexOf((a.data || "").slice(0, 7)); if (i >= 0) semCad[i]++; });
+  cls.forEach(c => {
     const trocas = c.trocas || [], conts = c.contatos || [];
     trocas.forEach(t => {
       const i = meses.indexOf(t.data.slice(0, 7)); if (i < 0) return;
@@ -852,7 +889,7 @@ window.renderAvulsas = () => {
   if (!$("avul-lista")) return;
   $("avul-qtd").textContent = avulsas.length;
   const ult = avulsas.slice().sort((a,b) => (b.data||"").localeCompare(a.data||"") || (b.criadoEm||"").localeCompare(a.criadoEm||"")).slice(0, 15);
-  $("avul-lista").innerHTML = ult.length ? ult.map(a => `<div class="hl"><span>${br(a.data)} · ${esc(a.servico || "Troca de óleo")} · ${money(a.valor)}${a.os ? " · OS " + esc(a.os) : ""}</span><button class="lixo" title="Apagar" onclick="apagarAvulsa('${a.id}', this)">🗑️</button></div>`).join("") : "Nenhuma";
+  $("avul-lista").innerHTML = ult.length ? ult.map(a => `<div class="hl"><span>${icone(tipoAv(a))} ${br(a.data)} · ${esc(a.servico || "Troca de óleo")} · ${money(a.valor)}${a.os ? " · OS " + esc(a.os) : ""}</span><button class="lixo" title="Apagar" onclick="apagarAvulsa('${a.id}', this)">🗑️</button></div>`).join("") : "Nenhuma";
 };
 
 window.apagarAvulsa = async (id, btn) => {
