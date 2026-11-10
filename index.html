@@ -67,6 +67,9 @@
   .fl .lin{display:flex;justify-content:space-between;margin-bottom:4px}
   .fl .barra{height:10px;border-radius:6px;background:var(--card2);overflow:hidden}
   .fl .barra i{display:block;height:100%;border-radius:6px}
+  .aviso{margin-top:12px;padding:12px;border-radius:8px;font-size:14px;line-height:1.5}
+  .aviso.warn{background:#eab30822;border:1px solid #eab30866;color:#fde68a}
+  .aviso.err{background:#ef444422;border:1px solid #ef444466;color:#fecaca}
   @media(max-width:600px){.ind-grid{grid-template-columns:1fr}}
   @media(max-width:600px){.row{grid-template-columns:1fr}}
 </style>
@@ -361,15 +364,56 @@ window.abrirNovo = () => abrir(`
     <div><label>Telefone / WhatsApp *</label><input id="c-tel" placeholder="42 99999-8888"></div>
     <div><label>Placa</label><input id="c-placa"></div>
   </div>
-  <label>Veículo</label><input id="c-veic" placeholder="Ex.: Gol 2015">
+  <div class="row">
+    <div><label>Veículo (modelo)</label><input id="c-veic" placeholder="Ex.: Gol"></div>
+    <div><label>Ano</label><input id="c-ano" type="number" placeholder="Ex.: 2015"></div>
+  </div>
   <h3 style="margin:16px 0 0;font-size:15px">Troca de óleo</h3>
   ${camposTroca()}
   <label>Observações</label><textarea id="c-obs" rows="2"></textarea>
-  <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarNovo()">Salvar</button><button class="btn" onclick="fechar()">Cancelar</button></div>`);
+  <div id="aviso"></div>
+  <div class="acts" id="acts-salvar" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarNovo()">Salvar</button><button class="btn" onclick="fechar()">Cancelar</button></div>`);
 
-window.salvarNovo = async () => {
+// confere o que está faltando; retorna true se pode salvar
+function conferir(obrig, faltas, forcar, fnSalvar){
+  const av = $("aviso");
+  if (obrig.length) {
+    av.innerHTML = `<div class="aviso err">⛔ Preencha antes de salvar: <b>${obrig.join(", ")}</b></div>`;
+    return false;
+  }
+  if (faltas.length && !forcar) {
+    av.innerHTML = `<div class="aviso warn">⚠️ Está faltando: <b>${faltas.join(", ")}</b>.<br>Tem certeza que quer salvar assim?
+      <div class="acts" style="margin-top:10px"><button class="btn btn-sm" onclick="$('aviso').innerHTML=''">Voltar e preencher</button><button class="btn btn-sm btn-primary" onclick="${fnSalvar}">Salvar mesmo assim</button></div></div>`;
+    av.scrollIntoView({behavior: "smooth", block: "center"});
+    return false;
+  }
+  return true;
+}
+
+function faltasTroca(){
+  const f = [];
+  if (!document.querySelectorAll(".t-item:checked").length) f.push("o que foi trocado");
+  if (!Number($("t-valor").value)) f.push("Valor");
+  if (!$("t-km").value.trim()) f.push("KM");
+  return f;
+}
+
+window.salvarNovo = async (forcar) => {
   const nome = $("c-nome").value.trim(), tel = $("c-tel").value.trim();
-  if (!nome || !tel) return alertaCampo();
+  const modelo = $("c-veic").value.trim(), ano = $("c-ano").value.trim();
+  const obrig = [];
+  if (!nome) obrig.push("Nome");
+  if (!tel) obrig.push("Telefone");
+  const faltas = [];
+  const dig = soNum(tel).length;
+  if (tel && (dig < 10 || dig > 11)) faltas.push("Telefone parece errado (" + dig + " números)");
+  if (!$("c-placa").value.trim()) faltas.push("Placa");
+  if (!modelo) faltas.push("Veículo");
+  if (!ano) faltas.push("Ano");
+  else if (+ano < 1950 || +ano > new Date().getFullYear() + 1) faltas.push("Ano parece errado");
+  faltas.push(...faltasTroca());
+  if (!conferir(obrig, faltas, forcar, "salvarNovo(true)")) return;
+  const veiculo = [modelo, ano].filter(Boolean).join(" ");
   const t = lerTroca();
   const placa = $("c-placa").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
   const existe = placa && clientes.find(c => c.placa === placa);
@@ -382,13 +426,12 @@ window.salvarNovo = async () => {
     return;
   }
   await addDoc(COL, {
-    nome, telefone: tel, placa, veiculo: $("c-veic").value.trim(),
+    nome, telefone: tel, placa, veiculo,
     obs: $("c-obs").value.trim(), status: "ativo",
     trocas: [t], contatos: [], proximoContato: addMeses(t.data, t.meses), criadoEm: hoje()
   });
   fechar();
 };
-function alertaCampo(){ const b = $("modal").querySelector(".btn-primary"); b.textContent = "Preencha nome e telefone"; setTimeout(()=> b.textContent = "Salvar", 1800); }
 
 window.abrirCliente = id => {
   const c = get(id); if(!c) return;
@@ -499,10 +542,11 @@ window.salvarResultado = async id => {
 };
 
 // ---------- nova troca / editar / excluir ----------
-window.modalTroca = id => abrir(`<h2>Nova troca — ${esc(get(id).nome)}</h2>${camposTroca()}
+window.modalTroca = id => abrir(`<h2>Nova troca — ${esc(get(id).nome)}</h2>${camposTroca()}<div id="aviso"></div>
   <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarTroca('${id}')">Salvar</button><button class="btn" onclick="abrirCliente('${id}')">Voltar</button></div>`);
 
-window.salvarTroca = async id => {
+window.salvarTroca = async (id, forcar) => {
+  if (!conferir([], faltasTroca(), forcar, `salvarTroca('${id}', true)`)) return;
   const c = get(id), t = lerTroca();
   await updateDoc(doc(db, "clientes", id), {trocas: [...(c.trocas||[]), t], proximoContato: addMeses(t.data, t.meses), status: "ativo", agendado: null});
   abrirCliente(id);
@@ -514,7 +558,8 @@ window.modalEditar = id => {
     <label>Nome</label><input id="e-nome" value="${esc(c.nome)}">
     <div class="row"><div><label>Telefone</label><input id="e-tel" value="${esc(c.telefone)}"></div>
     <div><label>Placa</label><input id="e-placa" value="${esc(c.placa||"")}"></div></div>
-    <label>Veículo</label><input id="e-veic" value="${esc(c.veiculo||"")}">
+    <div class="row"><div><label>Veículo (modelo)</label><input id="e-veic" value="${esc((c.veiculo||"").replace(/\s*\b(19|20)\d{2}$/, ""))}"></div>
+    <div><label>Ano</label><input id="e-ano" type="number" value="${esc(((c.veiculo||"").match(/\b((19|20)\d{2})$/)||[])[1]||"")}"></div></div>
     <label>Próximo contato</label><input id="e-prox" type="date" value="${c.proximoContato||hoje()}">
     <label>Situação</label><select id="e-st">
       <option value="ativo" ${c.status==="ativo"?"selected":""}>Ativo</option>
@@ -528,7 +573,7 @@ window.modalEditar = id => {
 window.salvarEdicao = async id => {
   await updateDoc(doc(db, "clientes", id), {
     nome: $("e-nome").value.trim(), telefone: $("e-tel").value.trim(), placa: $("e-placa").value.trim().toUpperCase(),
-    veiculo: $("e-veic").value.trim(), proximoContato: $("e-prox").value, status: $("e-st").value, obs: $("e-obs").value.trim()
+    veiculo: [$("e-veic").value.trim(), $("e-ano").value.trim()].filter(Boolean).join(" "), proximoContato: $("e-prox").value, status: $("e-st").value, obs: $("e-obs").value.trim()
   });
   abrirCliente(id);
 };
