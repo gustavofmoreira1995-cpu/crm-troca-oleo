@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ACM CRM — Troca de Óleo</title>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--card2:#20242d;--txt:#e8eaee;--mut:#9aa1ad;--pri:#f5a524;--ok:#22c55e;--warn:#eab308;--bad:#ef4444;--blue:#3b82f6;--line:#2a2f3a}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--txt)}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  header h1{font-size:18px;margin:0}
+  header h1 span{color:var(--pri)}
+  main{max-width:1100px;margin:0 auto;padding:16px}
+  .tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+  .tab{padding:9px 14px;border-radius:8px;background:var(--card);border:1px solid var(--line);cursor:pointer;color:var(--mut);font-weight:600}
+  .tab.on{background:var(--pri);color:#111;border-color:var(--pri)}
+  .btn{padding:9px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:600;font-size:14px;background:var(--card2);color:var(--txt)}
+  .btn-primary{background:var(--pri);color:#111}
+  .btn-ok{background:var(--ok);color:#fff}
+  .btn-bad{background:var(--bad);color:#fff}
+  .btn-blue{background:var(--blue);color:#fff}
+  .btn-wa{background:#25d366;color:#fff}
+  .btn-sm{padding:6px 10px;font-size:13px}
+  input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--txt);font-size:14px;font-family:inherit}
+  label{font-size:12px;color:var(--mut);display:block;margin:10px 0 4px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:18px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer}
+  .kpi b{font-size:28px;display:block}
+  .kpi small{color:var(--mut)}
+  .kpi.bad b{color:var(--bad)} .kpi.warn b{color:var(--warn)} .kpi.blue b{color:var(--blue)} .kpi.ok b{color:var(--ok)}
+  .kpi.sel{outline:2px solid var(--pri)}
+  .list{display:flex;flex-direction:column;gap:8px}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .item .info{flex:1;min-width:200px;cursor:pointer}
+  .item .nome{font-weight:700}
+  .item .sub{color:var(--mut);font-size:13px;margin-top:3px}
+  .acts{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;font-weight:700;margin-left:6px}
+  .t-bad{background:#ef444422;color:var(--bad)} .t-warn{background:#eab30822;color:var(--warn)} .t-blue{background:#3b82f622;color:var(--blue)} .t-ok{background:#22c55e22;color:var(--ok)} .t-mut{background:#ffffff11;color:var(--mut)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .bar input{flex:1;min-width:200px}
+  .modal-bg{position:fixed;inset:0;background:#000a;display:none;align-items:flex-start;justify-content:center;z-index:20;overflow:auto;padding:30px 10px}
+  .modal{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;width:100%;max-width:560px}
+  .modal h2{margin:0 0 6px;font-size:18px}
+  .hist{background:var(--bg);border-radius:8px;padding:10px;margin-top:8px;font-size:13px;max-height:200px;overflow:auto}
+  .hist div{padding:5px 0;border-bottom:1px solid var(--line)}
+  .hist div:last-child{border:none}
+  .empty{color:var(--mut);text-align:center;padding:30px}
+  #login{max-width:360px;margin:80px auto;background:var(--card);padding:24px;border-radius:14px;border:1px solid var(--line)}
+  .msg{font-size:13px;margin-top:8px}
+  @media(max-width:600px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- APP -->
+<div id="app">
+<header>
+  <h1>ACM <span>CRM</span> · Troca de Óleo</h1>
+</header>
+<main>
+  <div class="tabs">
+    <div class="tab on" data-tab="contatos" onclick="aba('contatos')">📞 Contatos</div>
+    <div class="tab" data-tab="clientes" onclick="aba('clientes')">👥 Clientes</div>
+    <div class="tab" data-tab="importar" onclick="aba('importar')">📥 Importar / Backup</div>
+  </div>
+
+  <!-- CONTATOS -->
+  <section id="sec-contatos">
+    <div class="cards">
+      <div class="kpi bad" data-f="atrasados" onclick="filtro('atrasados')"><b id="k-atr">0</b><small>Atrasados</small></div>
+      <div class="kpi warn" data-f="semana" onclick="filtro('semana')"><b id="k-sem">0</b><small>Vencem nesta semana</small></div>
+      <div class="kpi blue" data-f="mes" onclick="filtro('mes')"><b id="k-mes">0</b><small>Vencem neste mês</small></div>
+      <div class="kpi ok" data-f="futuro" onclick="filtro('futuro')"><b id="k-fut">0</b><small>Mais pra frente</small></div>
+    </div>
+    <div id="lista-contatos" class="list"></div>
+  </section>
+
+  <!-- CLIENTES -->
+  <section id="sec-clientes" style="display:none">
+    <div class="bar">
+      <input id="busca" placeholder="Buscar por nome, telefone ou placa..." oninput="renderClientes()">
+      <select id="f-status" onchange="renderClientes()" style="width:auto">
+        <option value="">Todos</option><option value="ativo">Ativos</option><option value="perdido">Trocou em outro lugar</option><option value="inativo">Não quer mais contato</option>
+      </select>
+      <button class="btn btn-primary" onclick="abrirNovo()">+ Novo cliente</button>
+    </div>
+    <div id="lista-clientes" class="list"></div>
+  </section>
+
+  <!-- IMPORTAR -->
+  <section id="sec-importar" style="display:none">
+    <div class="item" style="display:block">
+      <b>Importar clientes</b>
+      <p class="sub">Cole abaixo a lista (pode copiar direto do Excel). Uma linha por cliente, nesta ordem de colunas:<br>
+      <b>Nome · Telefone · Veículo · Placa · Data da troca (dd/mm/aaaa) · Serviço · Valor · KM</b></p>
+      <textarea id="imp-txt" rows="8" placeholder="João da Silva	42999998888	Gol	ABC1D23	15/03/2026	Óleo 5W30 + filtro	180	85000"></textarea>
+      <label>Avisar quantos meses depois da troca?</label>
+      <input id="imp-meses" type="number" value="6" style="max-width:120px">
+      <button class="btn btn-primary" style="margin-top:12px" onclick="importar()">Importar</button>
+      <div id="imp-msg" class="msg"></div>
+    </div>
+    <div class="item" style="display:block;margin-top:10px">
+      <b>Backup</b>
+      <p class="sub">Baixa uma planilha com todos os clientes. Faça de vez em quando.</p>
+      <button class="btn" onclick="exportar()">⬇️ Baixar planilha (CSV)</button>
+    </div>
+  </section>
+</main>
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="mbg" onclick="if(event.target===this)fechar()"><div class="modal" id="modal"></div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ⚠️ COLE AQUI a config do seu projeto Firebase (Configurações do projeto > Seus apps > SDK)
+const firebaseConfig = {
+  apiKey: "AIzaSyCVZSunoBunSZRV_DC7ccPOXDtc4V8TwG4",
+  authDomain: "acm-crm-troca-de-oleo.firebaseapp.com",
+  projectId: "acm-crm-troca-de-oleo",
+  storageBucket: "acm-crm-troca-de-oleo.firebasestorage.app",
+  messagingSenderId: "388326619308",
+  appId: "1:388326619308:web:2b1f9e1ccd22b61290c709"
+};
+
+// Prazo padrão (meses) entre uma troca e o próximo contato
+const PRAZO_PADRAO = 6;
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const COL = collection(db, "clientes");
+
+let clientes = [];
+let filtroAtual = "atrasados";
+
+// ---------- utilidades ----------
+const $ = id => document.getElementById(id);
+window.$ = $;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = n => String(n).padStart(2, "0");
+const iso = d => d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+const hoje = () => iso(new Date());
+const parseISO = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const br = s => s ? s.split("-").reverse().join("/") : "-";
+const addDias = (s, n) => { const d = parseISO(s); d.setDate(d.getDate()+n); return iso(d); };
+const addMeses = (s, n) => { const d = parseISO(s); const dia = d.getDate(); d.setDate(1); d.setMonth(d.getMonth()+Number(n)); const ult = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); d.setDate(Math.min(dia, ult)); return iso(d); };
+const diasAte = s => Math.round((parseISO(s) - parseISO(hoje())) / 86400000);
+const money = v => "R$ " + Number(v||0).toLocaleString("pt-BR", {minimumFractionDigits:2});
+const soNum = s => String(s||"").replace(/\D/g, "");
+const fimSemana = () => { const d = new Date(); d.setDate(d.getDate() + (7 - d.getDay()) % 7); return iso(d); };
+const fimMes = () => { const d = new Date(); return iso(new Date(d.getFullYear(), d.getMonth()+1, 0)); };
+const dataBRparaISO = s => { const m = String(s||"").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if(!m) return null; let y = +m[3]; if(y<100) y+=2000; return y + "-" + pad(m[2]) + "-" + pad(m[1]); };
+
+function ultimaTroca(c){ return (c.trocas||[]).slice().sort((a,b)=>b.data.localeCompare(a.data))[0]; }
+
+function situacao(c){
+  const d = diasAte(c.proximoContato);
+  if (d < 0) return {txt: "Atrasado " + (-d) + "d", cls: "t-bad"};
+  if (d === 0) return {txt: "Hoje", cls: "t-bad"};
+  if (c.proximoContato <= fimSemana()) return {txt: "Em " + d + "d", cls: "t-warn"};
+  if (c.proximoContato <= fimMes()) return {txt: "Em " + d + "d", cls: "t-blue"};
+  return {txt: br(c.proximoContato), cls: "t-ok"};
+}
+
+// ---------- carregar dados ----------
+onSnapshot(COL, snap => {
+  clientes = snap.docs.map(d => ({id: d.id, ...d.data()}));
+  renderTudo();
+});
+
+// ---------- navegação ----------
+window.aba = t => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
+  ["contatos","clientes","importar"].forEach(s => $("sec-"+s).style.display = s===t ? "block" : "none");
+};
+window.filtro = f => { filtroAtual = f; renderContatos(); };
+
+function renderTudo(){ renderContatos(); renderClientes(); }
+
+// ---------- painel de contatos ----------
+function renderContatos(){
+  const h = hoje(), fs = fimSemana(), fm = fimMes();
+  const ativos = clientes.filter(c => c.status === "ativo" && c.proximoContato);
+  const grupos = {
+    atrasados: ativos.filter(c => c.proximoContato <= h),
+    semana: ativos.filter(c => c.proximoContato > h && c.proximoContato <= fs),
+    mes: ativos.filter(c => c.proximoContato > fs && c.proximoContato <= fm),
+    futuro: ativos.filter(c => c.proximoContato > fm)
+  };
+  $("k-atr").textContent = grupos.atrasados.length;
+  $("k-sem").textContent = grupos.semana.length;
+  $("k-mes").textContent = grupos.mes.length;
+  $("k-fut").textContent = grupos.futuro.length;
+  document.querySelectorAll(".kpi").forEach(k => k.classList.toggle("sel", k.dataset.f === filtroAtual));
+
+  const lista = grupos[filtroAtual].sort((a,b) => a.proximoContato.localeCompare(b.proximoContato));
+  $("lista-contatos").innerHTML = lista.length ? lista.map(itemHTML).join("") : '<div class="empty">Nenhum cliente aqui. 👍</div>';
+}
+
+function itemHTML(c){
+  const s = situacao(c), u = ultimaTroca(c);
+  const tent = (c.contatos||[]).filter(x => x.data >= addDias(c.proximoContato, -60)).length;
+  return `<div class="item">
+    <div class="info" onclick="abrirCliente('${c.id}')">
+      <div class="nome">${esc(c.nome)} <span class="tag ${s.cls}">${s.txt}</span>${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}</div>
+      <div class="sub">📱 ${esc(c.telefone||"-")} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
+      <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
+    </div>
+    <div class="acts">
+      <button class="btn btn-wa btn-sm" onclick="whats('${c.id}')">WhatsApp</button>
+      <button class="btn btn-sm" onclick="modalResultado('${c.id}')">Registrar contato</button>
+    </div>
+  </div>`;
+}
+
+// ---------- lista de clientes ----------
+window.renderClientes = () => {
+  const q = $("busca").value.toLowerCase().trim(), st = $("f-status").value, qn = soNum(q);
+  const l = clientes.filter(c => (!st || c.status === st) && (!q ||
+      (c.nome||"").toLowerCase().includes(q) || (c.placa||"").toLowerCase().includes(q) || (qn && soNum(c.telefone).includes(qn))))
+    .sort((a,b) => (a.nome||"").localeCompare(b.nome||""));
+  const nomes = {ativo:["Ativo","t-ok"], perdido:["Trocou fora","t-bad"], inativo:["Sem contato","t-mut"]};
+  $("lista-clientes").innerHTML = l.length ? l.map(c => {
+    const u = ultimaTroca(c), n = nomes[c.status] || nomes.ativo;
+    return `<div class="item"><div class="info" onclick="abrirCliente('${c.id}')">
+      <div class="nome">${esc(c.nome)} <span class="tag ${n[1]}">${n[0]}</span></div>
+      <div class="sub">📱 ${esc(c.telefone||"-")} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")} · ${(c.trocas||[]).length} troca(s)</div>
+      <div class="sub">Última: ${u ? br(u.data) : "-"} · Próximo contato: ${c.status==="ativo" ? br(c.proximoContato) : "-"}</div>
+    </div></div>`;
+  }).join("") : '<div class="empty">Nenhum cliente encontrado.</div>';
+};
+
+// ---------- modal ----------
+const abrir = html => { $("modal").innerHTML = html; $("mbg").style.display = "flex"; };
+window.fechar = () => { $("mbg").style.display = "none"; };
+const get = id => clientes.find(c => c.id === id);
+
+const camposTroca = (meses) => `
+  <div class="row">
+    <div><label>Data da troca</label><input id="t-data" type="date" value="${hoje()}"></div>
+    <div><label>Valor (R$)</label><input id="t-valor" type="number" step="0.01"></div>
+  </div>
+  <label>Serviço (óleo, filtros...)</label><input id="t-serv" placeholder="Ex.: Óleo 5W30 + filtro de óleo">
+  <div class="row">
+    <div><label>KM do veículo</label><input id="t-km" type="number"></div>
+    <div><label>Avisar daqui a (meses)</label><input id="t-meses" type="number" value="${meses||PRAZO_PADRAO}"></div>
+  </div>`;
+
+const lerTroca = () => ({
+  data: $("t-data").value || hoje(),
+  valor: Number($("t-valor").value || 0),
+  servico: $("t-serv").value.trim(),
+  km: $("t-km").value.trim(),
+  meses: Number($("t-meses").value || PRAZO_PADRAO)
+});
+
+window.abrirNovo = () => abrir(`
+  <h2>Novo cliente</h2>
+  <label>Nome *</label><input id="c-nome">
+  <div class="row">
+    <div><label>Telefone / WhatsApp *</label><input id="c-tel" placeholder="42 99999-8888"></div>
+    <div><label>Placa</label><input id="c-placa"></div>
+  </div>
+  <label>Veículo</label><input id="c-veic" placeholder="Ex.: Gol 2015">
+  <h3 style="margin:16px 0 0;font-size:15px">Troca de óleo</h3>
+  ${camposTroca()}
+  <label>Observações</label><textarea id="c-obs" rows="2"></textarea>
+  <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarNovo()">Salvar</button><button class="btn" onclick="fechar()">Cancelar</button></div>`);
+
+window.salvarNovo = async () => {
+  const nome = $("c-nome").value.trim(), tel = $("c-tel").value.trim();
+  if (!nome || !tel) return alertaCampo();
+  const t = lerTroca();
+  await addDoc(COL, {
+    nome, telefone: tel, placa: $("c-placa").value.trim().toUpperCase(), veiculo: $("c-veic").value.trim(),
+    obs: $("c-obs").value.trim(), status: "ativo",
+    trocas: [t], contatos: [], proximoContato: addMeses(t.data, t.meses), criadoEm: hoje()
+  });
+  fechar();
+};
+function alertaCampo(){ const b = $("modal").querySelector(".btn-primary"); b.textContent = "Preencha nome e telefone"; setTimeout(()=> b.textContent = "Salvar", 1800); }
+
+window.abrirCliente = id => {
+  const c = get(id); if(!c) return;
+  const trocas = (c.trocas||[]).slice().sort((a,b)=>b.data.localeCompare(a.data));
+  const conts = (c.contatos||[]).slice().reverse();
+  const total = trocas.reduce((s,t)=>s+Number(t.valor||0),0);
+  abrir(`
+    <h2>${esc(c.nome)}</h2>
+    <div class="sub">📱 ${esc(c.telefone)} · 🚗 ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
+    <div class="sub">Próximo contato: <b>${c.status==="ativo" ? br(c.proximoContato) : "—"}</b> · Total gasto: <b>${money(total)}</b></div>
+    ${c.obs ? `<div class="sub">📝 ${esc(c.obs)}</div>` : ""}
+    <div class="acts" style="margin-top:12px">
+      <button class="btn btn-wa btn-sm" onclick="whats('${id}')">WhatsApp</button>
+      <button class="btn btn-sm" onclick="modalResultado('${id}')">Registrar contato</button>
+      <button class="btn btn-ok btn-sm" onclick="modalTroca('${id}')">+ Nova troca</button>
+      <button class="btn btn-sm" onclick="modalEditar('${id}')">Editar</button>
+    </div>
+    <label>Trocas (${trocas.length})</label>
+    <div class="hist">${trocas.map(t=>`<div>${br(t.data)} · ${esc(t.servico||"-")} · ${money(t.valor)}${t.km?" · "+esc(t.km)+" km":""}</div>`).join("") || "Nenhuma"}</div>
+    <label>Contatos (${conts.length})</label>
+    <div class="hist">${conts.map(x=>`<div>${br(x.data)} · <b>${esc(x.resultado)}</b>${x.nota?" — "+esc(x.nota):""}</div>`).join("") || "Nenhum ainda"}</div>
+    <div class="acts" style="margin-top:14px;justify-content:space-between">
+      <button class="btn" onclick="fechar()">Fechar</button>
+      <button class="btn btn-bad btn-sm" onclick="excluir('${id}')">Excluir cliente</button>
+    </div>`);
+};
+
+// ---------- WhatsApp ----------
+window.whats = id => {
+  const c = get(id); let tel = soNum(c.telefone);
+  if (tel.length <= 11) tel = "55" + tel;
+  const u = ultimaTroca(c);
+  const primeiro = (c.nome||"").split(" ")[0];
+  const msg = `Olá ${primeiro}, tudo bem? Aqui é do ACM Auto Posto! 😊\n` +
+    `Pelo nosso controle, a troca de óleo do seu ${c.veiculo || "veículo"}${u ? " (feita em " + br(u.data) + ")" : ""} está chegando no prazo.\n` +
+    `Quer agendar um horário com a gente?`;
+  window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
+};
+
+// ---------- resultado do contato ----------
+window.modalResultado = id => {
+  const c = get(id);
+  abrir(`
+    <h2>Registrar contato — ${esc(c.nome)}</h2>
+    <label>O que o cliente respondeu?</label>
+    <select id="r-tipo" onchange="trocaTipo()">
+      <option value="adiar">Ainda não venceu — chamar de novo depois</option>
+      <option value="semresp">Não respondeu</option>
+      <option value="agendou">Agendou / vem trocar</option>
+      <option value="trocou">Trocou com a gente (registrar troca)</option>
+      <option value="fora">Já trocou em outro lugar</option>
+      <option value="naoquer">Não quer mais contato</option>
+    </select>
+    <div id="r-extra"></div>
+    <label>Anotação</label><textarea id="r-nota" rows="2" placeholder="Opcional"></textarea>
+    <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarResultado('${id}')">Salvar</button><button class="btn" onclick="fechar()">Cancelar</button></div>`);
+  trocaTipo();
+};
+
+window.trocaTipo = () => {
+  const t = $("r-tipo").value, ex = $("r-extra");
+  if (t === "adiar") ex.innerHTML = `<label>Chamar de novo em</label>
+    <div class="acts">${[7,15,20,30,45,60].map(d=>`<button class="btn btn-sm" onclick="$('r-data').value='${addDias(hoje(),d)}'">${d} dias</button>`).join("")}</div>
+    <input id="r-data" type="date" value="${addDias(hoje(),15)}" style="margin-top:8px">`;
+  else if (t === "semresp") ex.innerHTML = `<label>Tentar de novo em</label><input id="r-data" type="date" value="${addDias(hoje(),3)}">`;
+  else if (t === "agendou") ex.innerHTML = `<label>Data agendada (lembrete pra confirmar)</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">`;
+  else if (t === "trocou") ex.innerHTML = camposTroca();
+  else if (t === "fora") ex.innerHTML = `<label>Quando ele trocou fora? (pra chamar na próxima)</label><input id="r-data" type="date" value="${hoje()}">
+    <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
+    <label>Meses até a próxima</label><input id="r-meses" type="number" value="${PRAZO_PADRAO}">`;
+  else ex.innerHTML = "";
+};
+
+const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato"};
+
+window.salvarResultado = async id => {
+  const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
+  const contatos = [...(c.contatos||[]), {data: hoje(), resultado: NOMES[t], nota}];
+  const upd = {contatos};
+  if (t === "adiar" || t === "semresp" || t === "agendou") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
+  else if (t === "trocou") { const tr = lerTroca(); upd.trocas = [...(c.trocas||[]), tr]; upd.proximoContato = addMeses(tr.data, tr.meses); upd.status = "ativo"; }
+  else if (t === "fora") {
+    if ($("r-seguir").checked) { upd.proximoContato = addMeses($("r-data").value, $("r-meses").value); upd.status = "ativo"; }
+    else upd.status = "perdido";
+  }
+  else if (t === "naoquer") upd.status = "inativo";
+  await updateDoc(doc(db, "clientes", id), upd);
+  fechar();
+};
+
+// ---------- nova troca / editar / excluir ----------
+window.modalTroca = id => abrir(`<h2>Nova troca — ${esc(get(id).nome)}</h2>${camposTroca()}
+  <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarTroca('${id}')">Salvar</button><button class="btn" onclick="abrirCliente('${id}')">Voltar</button></div>`);
+
+window.salvarTroca = async id => {
+  const c = get(id), t = lerTroca();
+  await updateDoc(doc(db, "clientes", id), {trocas: [...(c.trocas||[]), t], proximoContato: addMeses(t.data, t.meses), status: "ativo"});
+  abrirCliente(id);
+};
+
+window.modalEditar = id => {
+  const c = get(id);
+  abrir(`<h2>Editar cliente</h2>
+    <label>Nome</label><input id="e-nome" value="${esc(c.nome)}">
+    <div class="row"><div><label>Telefone</label><input id="e-tel" value="${esc(c.telefone)}"></div>
+    <div><label>Placa</label><input id="e-placa" value="${esc(c.placa||"")}"></div></div>
+    <label>Veículo</label><input id="e-veic" value="${esc(c.veiculo||"")}">
+    <label>Próximo contato</label><input id="e-prox" type="date" value="${c.proximoContato||hoje()}">
+    <label>Situação</label><select id="e-st">
+      <option value="ativo" ${c.status==="ativo"?"selected":""}>Ativo</option>
+      <option value="perdido" ${c.status==="perdido"?"selected":""}>Trocou em outro lugar</option>
+      <option value="inativo" ${c.status==="inativo"?"selected":""}>Não quer mais contato</option></select>
+    <label>Observações</label><textarea id="e-obs" rows="2">${esc(c.obs||"")}</textarea>
+    <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarEdicao('${id}')">Salvar</button><button class="btn" onclick="abrirCliente('${id}')">Voltar</button></div>`);
+};
+
+window.salvarEdicao = async id => {
+  await updateDoc(doc(db, "clientes", id), {
+    nome: $("e-nome").value.trim(), telefone: $("e-tel").value.trim(), placa: $("e-placa").value.trim().toUpperCase(),
+    veiculo: $("e-veic").value.trim(), proximoContato: $("e-prox").value, status: $("e-st").value, obs: $("e-obs").value.trim()
+  });
+  abrirCliente(id);
+};
+
+window.excluir = async id => {
+  const b = event.target;
+  if (b.dataset.conf !== "1") { b.dataset.conf = "1"; b.textContent = "Clique de novo pra confirmar"; return; }
+  await deleteDoc(doc(db, "clientes", id)); fechar();
+};
+
+// ---------- importar / exportar ----------
+window.importar = async () => {
+  const linhas = $("imp-txt").value.split("\n").map(l => l.trim()).filter(Boolean);
+  const meses = Number($("imp-meses").value || PRAZO_PADRAO);
+  let ok = 0, erro = [];
+  let batch = writeBatch(db), n = 0;
+  for (const [i, l] of linhas.entries()) {
+    const p = l.split(/\t|;/).map(x => x.trim());
+    const data = dataBRparaISO(p[4]);
+    if (!p[0] || !data) { erro.push(i+1); continue; }
+    const t = {data, servico: p[5]||"", valor: Number(String(p[6]||"0").replace("R$","").replace(/\./g,"").replace(",",".")) || 0, km: p[7]||"", meses};
+    batch.set(doc(COL), {nome: p[0], telefone: p[1]||"", veiculo: p[2]||"", placa: (p[3]||"").toUpperCase(), obs: "", status: "ativo",
+      trocas: [t], contatos: [], proximoContato: addMeses(data, meses), criadoEm: hoje()});
+    ok++; n++;
+    if (n === 400) { await batch.commit(); batch = writeBatch(db); n = 0; }
+  }
+  if (n) await batch.commit();
+  $("imp-msg").innerHTML = `<span style="color:var(--ok)">✅ ${ok} cliente(s) importado(s).</span>` +
+    (erro.length ? `<br><span style="color:var(--bad)">Linhas com problema (sem nome ou data inválida): ${erro.join(", ")}</span>` : "");
+  if (ok) $("imp-txt").value = "";
+};
+
+window.exportar = () => {
+  const cab = ["Nome","Telefone","Veículo","Placa","Situação","Próximo contato","Qtd trocas","Última troca","Último serviço","Último valor","Total gasto"];
+  const linhas = clientes.map(c => { const u = ultimaTroca(c) || {}; const tot = (c.trocas||[]).reduce((s,t)=>s+Number(t.valor||0),0);
+    return [c.nome,c.telefone,c.veiculo,c.placa,c.status,br(c.proximoContato),(c.trocas||[]).length,br(u.data),u.servico,u.valor,tot]
+      .map(v => '"' + String(v??"").replace(/"/g,'""') + '"').join(";"); });
+  const blob = new Blob(["﻿" + [cab.join(";"), ...linhas].join("\n")], {type: "text/csv;charset=utf-8"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "clientes-troca-oleo-" + hoje() + ".csv"; a.click();
+};
+</script>
+</body>
+</html>
