@@ -223,9 +223,12 @@ function itemHTML(c){
 
 // ---------- lista de clientes ----------
 window.renderClientes = () => {
-  const q = $("busca").value.toLowerCase().trim(), st = $("f-status").value, qn = soNum(q);
+  const q = $("busca").value.toLowerCase().trim(), st = $("f-status").value;
+  // só procura no telefone se a busca for só números (sem letras)
+  const qn = /[a-z]/i.test(q) ? "" : soNum(q);
+  const qp = q.replace(/[^a-z0-9]/g, "");
   const l = clientes.filter(c => (!st || c.status === st) && (!q ||
-      (c.nome||"").toLowerCase().includes(q) || (c.placa||"").toLowerCase().includes(q) || (qn && soNum(c.telefone).includes(qn))))
+      (c.nome||"").toLowerCase().includes(q) || (qp && (c.placa||"").toLowerCase().includes(qp)) || (qn && soNum(c.telefone).includes(qn))))
     .sort((a,b) => (a.nome||"").localeCompare(b.nome||""));
   const nomes = {ativo:["Ativo","t-ok"], perdido:["Trocou fora","t-bad"], inativo:["Sem contato","t-mut"]};
   $("lista-clientes").innerHTML = l.length ? l.map(c => {
@@ -282,8 +285,18 @@ window.salvarNovo = async () => {
   const nome = $("c-nome").value.trim(), tel = $("c-tel").value.trim();
   if (!nome || !tel) return alertaCampo();
   const t = lerTroca();
+  const placa = $("c-placa").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const existe = placa && clientes.find(c => c.placa === placa);
+  if (existe) {
+    const trocas = [...(existe.trocas||[]), t].sort((a,b) => a.data.localeCompare(b.data));
+    const u = trocas[trocas.length-1];
+    await updateDoc(doc(db, "clientes", existe.id), {trocas, proximoContato: addMeses(u.data, u.meses), status: "ativo"});
+    abrirCliente(existe.id);
+    $("modal").insertAdjacentHTML("afterbegin", `<div style="background:#22c55e22;color:var(--ok);padding:10px;border-radius:8px;margin-bottom:12px;font-size:14px">✅ Essa placa já estava cadastrada. A troca foi adicionada no histórico deste cliente.</div>`);
+    return;
+  }
   await addDoc(COL, {
-    nome, telefone: tel, placa: $("c-placa").value.trim().toUpperCase(), veiculo: $("c-veic").value.trim(),
+    nome, telefone: tel, placa, veiculo: $("c-veic").value.trim(),
     obs: $("c-obs").value.trim(), status: "ativo",
     trocas: [t], contatos: [], proximoContato: addMeses(t.data, t.meses), criadoEm: hoje()
   });
