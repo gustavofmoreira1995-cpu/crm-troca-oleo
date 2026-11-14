@@ -158,6 +158,10 @@
           <button class="btn btn-sm" onclick="coringa('[data]')">+ Data da última troca</button>
         </div>
         <textarea id="msg-txt" rows="8" oninput="previaMsg()"></textarea>
+        <label style="margin-top:12px">📅 Período em que essa mensagem vale</label>
+        <div class="row"><div><label>De</label><input id="msg-ini" type="date"></div><div><label>Até</label><input id="msg-fim" type="date"></div></div>
+        <label><input type="checkbox" id="msg-sempre" style="width:auto" onchange="travaDatas()"> Mensagem fixa (não vence)</label>
+        <div id="msg-status" class="sub" style="margin-top:8px"></div>
         <div class="acts" style="margin-top:12px">
           <button class="btn btn-primary" onclick="salvarMsg()">Salvar mensagem</button>
           <button class="btn btn-sm" onclick="padraoMsg()">Voltar pro texto padrão</button>
@@ -317,7 +321,7 @@ window.aba = t => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
   ["contatos","clientes","indicadores","mensagem","importar"].forEach(s => $("sec-"+s).style.display = s===t ? "block" : "none");
   if (t === "indicadores") renderIndicadores();
-  if (t === "mensagem") { $("msg-txt").value = msgModelo; previaMsg(); $("msg-aviso").innerHTML = ""; }
+  if (t === "mensagem") carregarAbaMsg();
 };
 window.filtro = f => { filtroAtual = f; renderContatos(); };
 
@@ -572,9 +576,38 @@ window.apagarItem = async (id, campo, idx, btn) => {
 
 // ---------- mensagem do WhatsApp (editável na aba Mensagem) ----------
 const MSG_PADRAO = "Olá [nome], tudo bem? Aqui é do ACM Auto Posto! 😊\nPelo nosso controle, a troca de óleo do seu [veículo] (feita em [data]) está chegando no prazo.\nQuer agendar um horário com a gente?";
-let msgModelo = MSG_PADRAO;
+let msgModelo = MSG_PADRAO, msgCfg = {semPrazo: true};   // sem nada salvo, o texto padrão não vence
 const MSG_DOC = doc(db, "config", "mensagem");
-onSnapshot(MSG_DOC, d => { if (d.exists() && d.data().texto) msgModelo = d.data().texto; }, err => console.error(err));
+onSnapshot(MSG_DOC, d => {
+  if (d.exists() && d.data().texto) {
+    const x = d.data(); msgModelo = x.texto;
+    msgCfg = {inicio: x.inicio || "", fim: x.fim || "", semPrazo: !!x.semPrazo};
+    if ($("sec-mensagem").style.display !== "none") statusMsg();
+  }
+}, err => console.error(err));
+
+// "ok" | "sem" (sem datas) | "antes" (ainda não começou) | "venceu"
+function situacaoMsg(){
+  if (msgCfg.semPrazo) return "ok";
+  if (!msgCfg.inicio || !msgCfg.fim) return "sem";
+  const h = hoje();
+  if (h < msgCfg.inicio) return "antes";
+  if (h > msgCfg.fim) return "venceu";
+  return "ok";
+}
+function statusMsg(){
+  const s = situacaoMsg(), el = $("msg-status");
+  el.innerHTML = s === "ok" ? (msgCfg.semPrazo ? '<span style="color:var(--ok)">✅ Mensagem fixa, não vence.</span>' : `<span style="color:var(--ok)">✅ Ativa de ${br(msgCfg.inicio)} até ${br(msgCfg.fim)}.</span>`)
+    : s === "venceu" ? `<span style="color:var(--bad)">⚠️ Venceu em ${br(msgCfg.fim)}. Mude a mensagem ou coloque novas datas.</span>`
+    : s === "antes" ? `<span style="color:var(--warn)">⏳ Só começa a valer em ${br(msgCfg.inicio)}.</span>`
+    : '<span style="color:var(--warn)">⚠️ Essa mensagem ainda não tem datas. Coloque o período e salve.</span>';
+}
+window.travaDatas = () => { const f = $("msg-sempre").checked; $("msg-ini").disabled = f; $("msg-fim").disabled = f; };
+window.carregarAbaMsg = () => {
+  $("msg-txt").value = msgModelo; $("msg-aviso").innerHTML = "";
+  $("msg-ini").value = msgCfg.inicio || hoje(); $("msg-fim").value = msgCfg.fim || "";
+  $("msg-sempre").checked = !!msgCfg.semPrazo; travaDatas(); statusMsg(); previaMsg();
+};
 
 function montarMsg(modelo, nome, veiculo, data){
   const primeiro = (nome||"").split(" ")[0];
@@ -588,13 +621,16 @@ window.coringa = cod => {
   t.value = t.value.slice(0, a) + cod + t.value.slice(b);
   t.focus(); t.selectionStart = t.selectionEnd = a + cod.length; previaMsg();
 };
-window.padraoMsg = () => { $("msg-txt").value = MSG_PADRAO; previaMsg(); $("msg-aviso").innerHTML = "Texto padrão colocado. Clique em <b>Salvar mensagem</b> pra confirmar."; };
+window.padraoMsg = () => { $("msg-txt").value = MSG_PADRAO; $("msg-sempre").checked = true; travaDatas(); previaMsg(); $("msg-aviso").innerHTML = "Texto padrão colocado. Clique em <b>Salvar mensagem</b> pra confirmar."; };
 window.salvarMsg = async () => {
   const texto = $("msg-txt").value.trim();
   if (!texto) { $("msg-aviso").innerHTML = '<span style="color:var(--bad)">A mensagem não pode ficar vazia.</span>'; return; }
+  const semPrazo = $("msg-sempre").checked, inicio = $("msg-ini").value, fim = $("msg-fim").value;
+  if (!semPrazo && (!inicio || !fim)) { $("msg-aviso").innerHTML = '<span style="color:var(--bad)">Coloque as datas <b>De</b> e <b>Até</b> (ou marque "Mensagem fixa").</span>'; return; }
+  if (!semPrazo && fim < inicio) { $("msg-aviso").innerHTML = '<span style="color:var(--bad)">A data <b>Até</b> tem que ser depois da data <b>De</b>.</span>'; return; }
   try {
-    await setDoc(MSG_DOC, {texto, atualizadoEm: hoje()});
-    msgModelo = texto;
+    await setDoc(MSG_DOC, {texto, inicio: semPrazo ? "" : inicio, fim: semPrazo ? "" : fim, semPrazo, atualizadoEm: hoje()});
+    msgModelo = texto; msgCfg = {inicio: semPrazo ? "" : inicio, fim: semPrazo ? "" : fim, semPrazo}; statusMsg();
     $("msg-aviso").innerHTML = '<span style="color:var(--ok)">✅ Mensagem salva! Já vale pro próximo WhatsApp.</span>';
   } catch (e) {
     console.error(e);
@@ -604,6 +640,38 @@ window.salvarMsg = async () => {
 
 // ---------- WhatsApp ----------
 window.whats = id => {
+  const s = situacaoMsg();
+  if (s !== "ok") return avisoMsgVencida(id, s);
+  enviarWhats(id);
+};
+
+function avisoMsgVencida(id, s){
+  const tit = s === "venceu" ? `⚠️ A mensagem do WhatsApp venceu em ${br(msgCfg.fim)}`
+    : s === "antes" ? `⏳ A mensagem do WhatsApp só começa em ${br(msgCfg.inicio)}`
+    : "⚠️ A mensagem do WhatsApp está sem datas";
+  abrir(`<h2>${tit}</h2>
+    <p class="sub">Antes de mandar, mude a mensagem ou libere ela pra novas datas.</p>
+    <div style="white-space:pre-wrap;background:#0b3d2e;border-radius:10px;padding:12px;margin:10px 0;line-height:1.45;max-height:180px;overflow:auto">${esc(msgModelo)}</div>
+    <label>Liberar essa mesma mensagem de</label>
+    <div class="row"><div><input id="lib-ini" type="date" value="${hoje()}"></div><div><input id="lib-fim" type="date" value="${addDias(hoje(), 30)}"></div></div>
+    <div id="lib-aviso" class="sub" style="margin-top:6px"></div>
+    <div class="acts" style="margin-top:14px">
+      <button class="btn btn-primary" onclick="liberarMsg('${id}')">Liberar e mandar</button>
+      <button class="btn" onclick="fechar();aba('mensagem')">✏️ Mudar a mensagem</button>
+      <button class="btn" onclick="fechar()">Cancelar</button>
+    </div>`);
+}
+
+window.liberarMsg = id => {
+  const inicio = $("lib-ini").value, fim = $("lib-fim").value;
+  if (!inicio || !fim || fim < inicio) { $("lib-aviso").innerHTML = '<span style="color:var(--bad)">Confira as datas: a segunda tem que ser depois da primeira.</span>'; return; }
+  if (hoje() < inicio || hoje() > fim) { $("lib-aviso").innerHTML = '<span style="color:var(--bad)">Pra mandar agora, o período precisa incluir hoje.</span>'; return; }
+  msgCfg = {inicio, fim, semPrazo: false};
+  fechar(); enviarWhats(id);
+  setDoc(MSG_DOC, {texto: msgModelo, inicio, fim, semPrazo: false, atualizadoEm: hoje()}).catch(e => console.error(e));
+};
+
+function enviarWhats(id){
   const c = get(id); let tel = soNum(c.telefone);
   if (tel.length <= 11) tel = "55" + tel;
   const u = ultimaTroca(c);
