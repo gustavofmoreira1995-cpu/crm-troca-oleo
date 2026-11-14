@@ -676,7 +676,7 @@ function enviarWhats(id){
   if (tel.length <= 11) tel = "55" + tel;
   const u = ultimaTroca(c);
   const msg = montarMsg(msgModelo, c.nome, c.veiculo, u ? br(u.data) : "");
-  window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
+  window.open("https://api.whatsapp.com/send?phone=" + tel + "&text=" + encodeURIComponent(msg), "_blank");
 };
 
 // ---------- resultado do contato ----------
