@@ -314,7 +314,31 @@ onSnapshot(AVUL, snap => {
 onSnapshot(COL, snap => {
   clientes = snap.docs.map(d => ({id: d.id, ...d.data()}));
   renderTudo();
+  corrigirSemResposta();
 });
+
+// correção única: antes, "Não respondeu" jogava o cliente 3 dias pra frente.
+// Devolve pro lugar original quem foi registrado assim antes de 15/11/2026.
+let corrigiu = false;
+async function corrigirSemResposta(){
+  if (corrigiu) return; corrigiu = true;
+  const batch = writeBatch(db); let n = 0;
+  for (const c of clientes) {
+    if (c.status !== "ativo" || c.agendado || !c.proximoContato) continue;
+    const lst = c.contatos || [], u = ultimaTroca(c);
+    let primeira = null;
+    for (let i = lst.length - 1; i >= 0; i--) {
+      const x = lst[i];
+      if (x.resultado !== "Não respondeu" || (u && x.data < u.data)) break;
+      primeira = x.data;
+    }
+    if (!primeira || primeira >= "2026-11-15") continue;
+    const auto = u ? addMeses(u.data, u.meses || PRAZO_PADRAO) : primeira;
+    const certo = auto < primeira ? auto : primeira;
+    if (c.proximoContato > certo) { batch.update(doc(db, "clientes", c.id), {proximoContato: certo}); n++; }
+  }
+  if (n) { await batch.commit(); console.log("Correção 'Não respondeu':", n, "cliente(s) de volta pra lista"); }
+}
 
 // ---------- navegação ----------
 window.aba = t => {
