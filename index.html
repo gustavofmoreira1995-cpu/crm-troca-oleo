@@ -86,6 +86,7 @@
     <div class="tab on" data-tab="indicadores" onclick="aba('indicadores')">📊 Indicadores</div>
     <div class="tab" data-tab="contatos" onclick="aba('contatos')">📞 Contatos</div>
     <div class="tab" data-tab="clientes" onclick="aba('clientes')">👥 Clientes</div>
+    <div class="tab" data-tab="mensagem" onclick="aba('mensagem')">💬 Mensagem</div>
     <div class="tab" data-tab="importar" onclick="aba('importar')">📥 Importar / Backup</div>
   </div>
 
@@ -143,6 +144,32 @@
     <div class="cards" id="ind-geral"></div>
     <div class="painel"><b>Trocas por mês (últimos 12 meses)</b><div style="position:relative;height:260px;margin-top:10px"><canvas id="ind-chart"></canvas></div></div>
     <p class="sub" style="margin-top:14px">ℹ️ <b>Retorno</b> = a placa já tinha uma troca antes. <b>Sem cadastro</b> = venda bazar (cliente não identificado), conta na quantidade e no faturamento, mas não na taxa de retorno. Vendas bazar antigas sem tipo marcado: abaixo de R$ 50 contam como moto. <b>Via CRM</b> = troca feita até 30 dias depois de um contato registrado. O histórico começa em nov/2025 (dados importados).</p>
+  </section>
+
+  <!-- MENSAGEM DO WHATSAPP -->
+  <section id="sec-mensagem" style="display:none">
+    <div class="ind-grid">
+      <div class="painel">
+        <b>✏️ Mensagem do WhatsApp</b>
+        <p class="sub">Esse é o texto que abre quando você clica em <b>WhatsApp</b> no cliente. Clique nos botões pra colocar os dados do cliente onde quiser.</p>
+        <div class="acts" style="margin:8px 0">
+          <button class="btn btn-sm" onclick="coringa('[nome]')">+ Nome</button>
+          <button class="btn btn-sm" onclick="coringa('[veículo]')">+ Veículo</button>
+          <button class="btn btn-sm" onclick="coringa('[data]')">+ Data da última troca</button>
+        </div>
+        <textarea id="msg-txt" rows="8" oninput="previaMsg()"></textarea>
+        <div class="acts" style="margin-top:12px">
+          <button class="btn btn-primary" onclick="salvarMsg()">Salvar mensagem</button>
+          <button class="btn btn-sm" onclick="padraoMsg()">Voltar pro texto padrão</button>
+        </div>
+        <div id="msg-aviso" class="sub" style="margin-top:8px"></div>
+      </div>
+      <div class="painel">
+        <b>👀 Como o cliente vai receber</b>
+        <p class="sub">Exemplo com um cliente fictício.</p>
+        <div id="msg-previa" style="white-space:pre-wrap;background:#0b3d2e;border-radius:10px;padding:12px;margin-top:8px;line-height:1.45"></div>
+      </div>
+    </div>
   </section>
 
   <!-- IMPORTAR -->
@@ -206,7 +233,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ⚠️ COLE AQUI a config do seu projeto Firebase (Configurações do projeto > Seus apps > SDK)
 const firebaseConfig = {
@@ -288,8 +315,9 @@ onSnapshot(COL, snap => {
 // ---------- navegação ----------
 window.aba = t => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.tab === t));
-  ["contatos","clientes","indicadores","importar"].forEach(s => $("sec-"+s).style.display = s===t ? "block" : "none");
+  ["contatos","clientes","indicadores","mensagem","importar"].forEach(s => $("sec-"+s).style.display = s===t ? "block" : "none");
   if (t === "indicadores") renderIndicadores();
+  if (t === "mensagem") { $("msg-txt").value = msgModelo; previaMsg(); $("msg-aviso").innerHTML = ""; }
 };
 window.filtro = f => { filtroAtual = f; renderContatos(); };
 
@@ -542,15 +570,44 @@ window.apagarItem = async (id, campo, idx, btn) => {
   abrirCliente(id);
 };
 
+// ---------- mensagem do WhatsApp (editável na aba Mensagem) ----------
+const MSG_PADRAO = "Olá [nome], tudo bem? Aqui é do ACM Auto Posto! 😊\nPelo nosso controle, a troca de óleo do seu [veículo] (feita em [data]) está chegando no prazo.\nQuer agendar um horário com a gente?";
+let msgModelo = MSG_PADRAO;
+const MSG_DOC = doc(db, "config", "mensagem");
+onSnapshot(MSG_DOC, d => { if (d.exists() && d.data().texto) msgModelo = d.data().texto; }, err => console.error(err));
+
+function montarMsg(modelo, nome, veiculo, data){
+  const primeiro = (nome||"").split(" ")[0];
+  return modelo.replace(/\[nome\]/gi, primeiro)
+    .replace(/\[ve[ií]culo\]/gi, veiculo || "veículo")
+    .replace(/\[data\]/gi, data || "última troca");
+}
+window.previaMsg = () => { $("msg-previa").textContent = montarMsg($("msg-txt").value, "João Silva", "Uno 2014", "15/04/2026"); };
+window.coringa = cod => {
+  const t = $("msg-txt"), a = t.selectionStart, b = t.selectionEnd;
+  t.value = t.value.slice(0, a) + cod + t.value.slice(b);
+  t.focus(); t.selectionStart = t.selectionEnd = a + cod.length; previaMsg();
+};
+window.padraoMsg = () => { $("msg-txt").value = MSG_PADRAO; previaMsg(); $("msg-aviso").innerHTML = "Texto padrão colocado. Clique em <b>Salvar mensagem</b> pra confirmar."; };
+window.salvarMsg = async () => {
+  const texto = $("msg-txt").value.trim();
+  if (!texto) { $("msg-aviso").innerHTML = '<span style="color:var(--bad)">A mensagem não pode ficar vazia.</span>'; return; }
+  try {
+    await setDoc(MSG_DOC, {texto, atualizadoEm: hoje()});
+    msgModelo = texto;
+    $("msg-aviso").innerHTML = '<span style="color:var(--ok)">✅ Mensagem salva! Já vale pro próximo WhatsApp.</span>';
+  } catch (e) {
+    console.error(e);
+    $("msg-aviso").innerHTML = '<span style="color:var(--bad)">⚠️ Não consegui salvar. Confira as <b>Regras</b> do Firestore (precisa liberar "config").</span>';
+  }
+};
+
 // ---------- WhatsApp ----------
 window.whats = id => {
   const c = get(id); let tel = soNum(c.telefone);
   if (tel.length <= 11) tel = "55" + tel;
   const u = ultimaTroca(c);
-  const primeiro = (c.nome||"").split(" ")[0];
-  const msg = `Olá ${primeiro}, tudo bem? Aqui é do ACM Auto Posto! 😊\n` +
-    `Pelo nosso controle, a troca de óleo do seu ${c.veiculo || "veículo"}${u ? " (feita em " + br(u.data) + ")" : ""} está chegando no prazo.\n` +
-    `Quer agendar um horário com a gente?`;
+  const msg = montarMsg(msgModelo, c.nome, c.veiculo, u ? br(u.data) : "");
   window.open("https://wa.me/" + tel + "?text=" + encodeURIComponent(msg), "_blank");
 };
 
