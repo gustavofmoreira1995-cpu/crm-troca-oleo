@@ -38,7 +38,7 @@
   .item .sub{color:var(--mut);font-size:13px;margin-top:3px}
   .acts{display:flex;gap:6px;flex-wrap:wrap}
   .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;font-weight:700;margin-left:6px}
-  .t-bad{background:#ef444422;color:var(--bad)} .t-warn{background:#eab30822;color:var(--warn)} .t-blue{background:#3b82f622;color:var(--blue)} .t-ok{background:#22c55e22;color:var(--ok)} .t-mut{background:#ffffff11;color:var(--mut)}
+  .t-bad{background:#ef444422;color:var(--bad)} .t-warn{background:#eab30822;color:var(--warn)} .t-blue{background:#3b82f622;color:var(--blue)} .t-ok{background:#22c55e22;color:var(--ok)} .t-mut{background:#ffffff11;color:var(--mut)} .t-msg{background:#22c55e22;color:var(--ok)}
   .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
   .bar input{flex:1;min-width:200px}
@@ -358,12 +358,25 @@ function tagAgenda(c){
   return `<span class="tag t-bad">⚠️ Não compareceu (${br(c.agendado).slice(0,5)})</span>`;
 }
 
+// quantas mensagens seguidas sem resposta (desde a última troca)
+function msgsSemResp(c){
+  const u = ultimaTroca(c), lst = c.contatos || [];
+  let n = 0, ult = null;
+  for (let i = lst.length - 1; i >= 0; i--) {
+    const x = lst[i];
+    if (x.resultado !== "Não respondeu" || (u && x.data < u.data)) break;
+    n++; if (!ult) ult = x.data;
+  }
+  return n ? {n, ult} : null;
+}
+
 function itemHTML(c){
-  const s = situacao(c), u = ultimaTroca(c);
-  const tent = (c.contatos||[]).filter(x => x.data >= addDias(c.proximoContato, -60)).length;
+  const s = situacao(c), u = ultimaTroca(c), ms = msgsSemResp(c);
+  const tent = ms ? 0 : (c.contatos||[]).filter(x => x.data >= addDias(c.proximoContato, -60)).length;
+  const tagMsg = ms ? `<span class="tag t-msg">📩 Já recebeu msg ${br(ms.ult).slice(0,5)}${ms.n > 1 ? " · " + ms.n + "x" : ""}</span>` : "";
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
-      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}</div>
+      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}</div>
       <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
@@ -706,7 +719,7 @@ window.trocaTipo = () => {
   if (t === "adiar") ex.innerHTML = `<label>Chamar de novo em</label>
     <div class="acts">${[7,15,20,30,45,60].map(d=>`<button class="btn btn-sm" onclick="$('r-data').value='${addDias(hoje(),d)}'">${d} dias</button>`).join("")}</div>
     <input id="r-data" type="date" value="${addDias(hoje(),15)}" style="margin-top:8px">`;
-  else if (t === "semresp") ex.innerHTML = `<label>Tentar de novo em</label><input id="r-data" type="date" value="${addDias(hoje(),3)}">`;
+  else if (t === "semresp") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:var(--ok)">📩 Já recebeu msg</b>.</div>`;
   else if (t === "agendou") ex.innerHTML = `<label>Que dia ele vai vir?</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">
     <div class="sub" style="margin-top:6px">Se ele não vier até esse dia, aparece como <b style="color:var(--bad)">⚠️ Não compareceu</b> no dia seguinte.</div>`;
   else if (t === "trocou") ex.innerHTML = camposTroca(tipoDe(get($("modal").dataset.cli)) === "moto" ? PRAZO_MOTO : PRAZO_PADRAO);
@@ -727,7 +740,8 @@ window.salvarResultado = async id => {
   const contatos = [...(c.contatos||[]), novo];
   const upd = {contatos, agendado: null};
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
-  else if (t === "adiar" || t === "semresp") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
+  else if (t === "adiar") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
+  else if (t === "semresp") { upd.status = "ativo"; }
   else if (t === "trocou") { const tr = lerTroca(); upd.trocas = [...(c.trocas||[]), tr]; upd.proximoContato = addMeses(tr.data, tr.meses); upd.status = "ativo"; }
   else if (t === "fora") {
     if ($("r-seguir").checked) { upd.proximoContato = addMeses($("r-data").value, $("r-meses").value); upd.status = "ativo"; }
