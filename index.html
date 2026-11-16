@@ -99,6 +99,12 @@
       <div class="kpi ok" data-f="futuro" onclick="filtro('futuro')"><b id="k-fut">0</b><small>Mais pra frente</small></div>
       <div class="kpi agd" data-f="agendados" onclick="filtro('agendados')"><b id="k-agd">0</b><small>📅 Agendados (vão vir)</small></div>
     </div>
+    <div class="bar">
+      <select id="bc-tipo" onchange="trocaBuscaC()" style="width:auto">
+        <option value="nome">👤 Nome</option><option value="placa">🚗 Placa</option><option value="tel">📱 Telefone</option>
+      </select>
+      <input id="bc" placeholder="Pesquisar pelo nome..." oninput="renderContatos()">
+    </div>
     <div id="lista-contatos" class="list"></div>
   </section>
 
@@ -352,9 +358,23 @@ window.filtro = f => { filtroAtual = f; renderContatos(); };
 function renderTudo(){ renderContatos(); renderClientes(); renderIndicadores(); }
 
 // ---------- painel de contatos ----------
+const semAcento = s => String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+window.trocaBuscaC = () => {
+  const t = $("bc-tipo").value;
+  $("bc").placeholder = t === "placa" ? "Pesquisar pela placa..." : t === "nome" ? "Pesquisar pelo nome..." : "Pesquisar pelo telefone...";
+  $("bc").value = ""; $("bc").focus(); renderContatos();
+};
+function bateBuscaC(c){
+  const q = semAcento($("bc") ? $("bc").value.trim() : ""), tipo = $("bc-tipo") ? $("bc-tipo").value : "nome";
+  if (!q) return true;
+  if (tipo === "placa") { const qp = q.replace(/[^a-z0-9]/g, ""); return !!qp && (c.placa||"").toLowerCase().includes(qp); }
+  if (tipo === "tel") { const qn = soNum(q); return !!qn && soNum(c.telefone).includes(qn); }
+  return semAcento(c.nome).includes(q);
+}
+window.renderContatos = renderContatos;
 function renderContatos(){
   const h = hoje(), fs = fimSemana(), fm = fimMes();
-  const todosAtivos = clientes.filter(c => c.status === "ativo" && c.proximoContato);
+  const todosAtivos = clientes.filter(c => c.status === "ativo" && c.proximoContato && bateBuscaC(c));
   const agendados = todosAtivos.filter(c => c.agendado && c.agendado >= h);
   const ativos = todosAtivos.filter(c => !(c.agendado && c.agendado >= h));
   const grupos = {
@@ -373,7 +393,7 @@ function renderContatos(){
 
   const ordem = filtroAtual === "agendados" ? (c => c.agendado) : (c => c.proximoContato);
   const lista = grupos[filtroAtual].sort((a,b) => ordem(a).localeCompare(ordem(b)));
-  $("lista-contatos").innerHTML = lista.length ? lista.map(itemHTML).join("") : '<div class="empty">Nenhum cliente aqui. 👍</div>';
+  $("lista-contatos").innerHTML = lista.length ? lista.map(itemHTML).join("") : ($("bc").value.trim() ? '<div class="empty">Nenhum cliente com essa busca nesta aba. Veja os números nas outras abas acima.</div>' : '<div class="empty">Nenhum cliente aqui. 👍</div>');
 }
 
 function tagAgenda(c){
