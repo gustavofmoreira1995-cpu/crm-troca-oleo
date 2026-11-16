@@ -425,7 +425,7 @@ function itemHTML(c){
   const tagMsg = ms ? `<span class="tag t-msg">📩 Já recebeu msg ${br(ms.ult).slice(0,5)}${ms.n > 1 ? " · " + ms.n + "x" : ""}</span>` : "";
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
-      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}${tagOrc}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
+      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}${tagOrc}${c.semWhats ? `<span class="tag" style="background:#f9731622;color:#f97316">📞 Sem WhatsApp — ligar</span>` : ""}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
       <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
@@ -756,6 +756,7 @@ window.modalResultado = id => {
       <option value="trocou">Trocou com a gente (registrar troca)</option>
       <option value="fora">Já trocou em outro lugar</option>
       <option value="naoquer">Não quer mais contato</option>
+      <option value="semwhats">📞 Cliente não tem WhatsApp</option>
       <option value="numero">📱 Cliente mudou o número de contato</option>
       <option value="semtel">📵 Não cadastrou número de telefone ao fazer a troca</option>
     </select>
@@ -779,11 +780,12 @@ window.trocaTipo = () => {
     <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
     <label>Meses até a próxima</label><input id="r-meses" type="number" value="${PRAZO_PADRAO}">`;
   else if (t === "numero") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente sai da lista de contatos (fica em "Arquivados"). Se ele voltar e você lançar uma troca, ele volta a ser ativo sozinho.</div>`;
+  else if (t === "semwhats") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:#f97316">📞 Sem WhatsApp — ligar</b>, pra quem for falar com ele saber que tem que ser por ligação.</div>`;
   else if (t === "semtel") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente sai da lista de contatos (fica em "Arquivados") e conta no indicador <b>Cadastrados sem telefone</b>. Se você conseguir o número depois, é só editar o cliente.</div>`;
   else ex.innerHTML = "";
 };
 
-const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
+const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", semwhats:"Não tem WhatsApp", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
 
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
@@ -796,6 +798,7 @@ window.salvarResultado = async id => {
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
   else if (t === "adiar") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
   else if (t === "semresp" || t === "orcamento") { upd.status = "ativo"; }
+  else if (t === "semwhats") { upd.status = "ativo"; upd.semWhats = true; }
   else if (t === "trocou") { const tr = lerTroca(); upd.trocas = [...(c.trocas||[]), tr]; upd.proximoContato = addMeses(tr.data, tr.meses); upd.status = "ativo"; }
   else if (t === "fora") {
     if ($("r-seguir").checked) { upd.proximoContato = addMeses($("r-data").value, $("r-meses").value); upd.status = "ativo"; }
@@ -833,6 +836,7 @@ window.modalEditar = id => {
       <option value="perdido" ${c.status==="perdido"?"selected":""}>Trocou em outro lugar</option>
       <option value="inativo" ${c.status==="inativo"?"selected":""}>Não quer mais contato</option>
       <option value="arquivado" ${c.status==="arquivado"?"selected":""}>Arquivado (antigo)</option></select>
+    <label><input type="checkbox" id="e-semwhats" ${c.semWhats?"checked":""} style="width:auto"> 📞 Cliente não tem WhatsApp (ligar)</label>
     <label>Observações</label><textarea id="e-obs" rows="2">${esc(c.obs||"")}</textarea>
     <div class="acts" style="margin-top:14px"><button class="btn btn-primary" onclick="salvarEdicao('${id}')">Salvar</button><button class="btn" onclick="abrirCliente('${id}')">Voltar</button></div>`);
 };
@@ -840,7 +844,7 @@ window.modalEditar = id => {
 window.salvarEdicao = async id => {
   await updateDoc(doc(db, "clientes", id), {
     nome: $("e-nome").value.trim(), telefone: $("e-tel").value.trim(), placa: $("e-placa").value.trim().toUpperCase(),
-    veiculo: [$("e-veic").value.trim(), $("e-ano").value.trim()].filter(Boolean).join(" "), proximoContato: $("e-prox").value, status: $("e-st").value, tipo: $("e-tipo").value, obs: $("e-obs").value.trim()
+    veiculo: [$("e-veic").value.trim(), $("e-ano").value.trim()].filter(Boolean).join(" "), proximoContato: $("e-prox").value, status: $("e-st").value, tipo: $("e-tipo").value, obs: $("e-obs").value.trim(), semWhats: $("e-semwhats").checked
   });
   abrirCliente(id);
 };
@@ -976,7 +980,7 @@ window.renderIndicadores = () => {
     passo("Trocaram em outro lugar", fora, nCli, "#ef4444")
     : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
-  const cores = {"Agendou":"#a855f7","Pediu orçamento":"#06b6d4","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
+  const cores = {"Agendou":"#a855f7","Pediu orçamento":"#06b6d4","Não tem WhatsApp":"#f97316","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
   const ordemRes = Object.entries(res).sort((a,b) => b[1] - a[1]);
   $("ind-res").innerHTML = ordemRes.length ? ordemRes.map(([k, n]) => passo(k, n, nCont, cores[k] || "#9aa1ad")).join("") : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
