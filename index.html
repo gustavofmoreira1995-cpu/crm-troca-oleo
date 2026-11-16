@@ -382,6 +382,9 @@ function tagAgenda(c){
   return `<span class="tag t-bad">⚠️ Não compareceu (${br(c.agendado).slice(0,5)})</span>`;
 }
 
+// telefone válido = 10 ou 11 números
+const telOk = c => { const n = String(c.telefone||"").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, ""); return n.length >= 10 && n.length <= 11; };
+
 // quantas mensagens seguidas sem resposta (desde a última troca)
 function msgsSemResp(c){
   const u = ultimaTroca(c), lst = c.contatos || [];
@@ -400,7 +403,7 @@ function itemHTML(c){
   const tagMsg = ms ? `<span class="tag t-msg">📩 Já recebeu msg ${br(ms.ult).slice(0,5)}${ms.n > 1 ? " · " + ms.n + "x" : ""}</span>` : "";
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
-      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}</div>
+      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
       <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
@@ -731,6 +734,7 @@ window.modalResultado = id => {
       <option value="fora">Já trocou em outro lugar</option>
       <option value="naoquer">Não quer mais contato</option>
       <option value="numero">📱 Cliente mudou o número de contato</option>
+      <option value="semtel">📵 Não cadastrou número de telefone ao fazer a troca</option>
     </select>
     <div id="r-extra"></div>
     <label>Anotação</label><textarea id="r-nota" rows="2" placeholder="Opcional"></textarea>
@@ -751,16 +755,18 @@ window.trocaTipo = () => {
     <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
     <label>Meses até a próxima</label><input id="r-meses" type="number" value="${PRAZO_PADRAO}">`;
   else if (t === "numero") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente sai da lista de contatos (fica em "Arquivados"). Se ele voltar e você lançar uma troca, ele volta a ser ativo sozinho.</div>`;
+  else if (t === "semtel") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente sai da lista de contatos (fica em "Arquivados") e conta no indicador <b>Cadastrados sem telefone</b>. Se você conseguir o número depois, é só editar o cliente.</div>`;
   else ex.innerHTML = "";
 };
 
-const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", numero:"Mudou de número"};
+const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
 
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
   const novo = {data: hoje(), resultado: NOMES[t], nota};
   if (t === "agendou") novo.agendadoPara = $("r-data").value;
   if (t === "numero") novo.mudouNumero = true;
+  if (t === "semtel") novo.semTelefone = true;
   const contatos = [...(c.contatos||[]), novo];
   const upd = {contatos, agendado: null};
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
@@ -772,7 +778,7 @@ window.salvarResultado = async id => {
     else upd.status = "perdido";
   }
   else if (t === "naoquer") upd.status = "inativo";
-  else if (t === "numero") upd.status = "arquivado";
+  else if (t === "numero" || t === "semtel") upd.status = "arquivado";
   await updateDoc(doc(db, "clientes", id), upd);
   fechar();
 };
@@ -861,11 +867,14 @@ window.renderIndicadores = () => {
   let venc = 0, recup = 0, cob = 0, vencCRM = 0, cobCont = 0, cobVolta = 0;
   let nCont = 0, trocasCRM = 0, receitaCRM = 0, recResp = 0, recSem = 0, troResp = 0, troSem = 0;
   let agendTot = 0, agendFech = 0, compar = 0;
-  const contatados = new Map(), res = {}, agendCli = new Set(), mudouCli = new Set();
+  const contatados = new Map(), res = {}, agendCli = new Set(), mudouCli = new Set(), semTelCli = new Set();
+  let novosCad = 0, novosSemTel = 0;
 
   cls.forEach(c => {
     const trocas = (c.trocas||[]).slice().sort((a,b) => a.data.localeCompare(b.data));
     const conts = c.contatos || [];
+    // cliente cadastrado (1ª troca) no período: veio com telefone?
+    if (trocas.length && dentro(trocas[0].data)) { novosCad++; if (!telOk(c)) novosSemTel++; }
     trocas.forEach(t => {
       const v = Number(t.valor || 0);
       if (dentro(t.data)) {
@@ -894,6 +903,7 @@ window.renderIndicadores = () => {
       if (!dentro(x.data)) return;
       nCont++;
       if (x.mudouNumero) mudouCli.add(c.id);
+      if (x.semTelefone) semTelCli.add(c.id);
       res[x.resultado] = (res[x.resultado] || 0) + 1;
       if (!contatados.has(c.id) || x.data < contatados.get(c.id)) contatados.set(c.id, x.data);
       if (x.resultado === "Agendou") {
@@ -929,6 +939,7 @@ window.renderIndicadores = () => {
     kpiHTML(vencCRM && cob / vencCRM < 0.7 ? "warn" : "ok", pct(cob, vencCRM), "Cobertura", `${vencCRM} vencidos desde ${br(CRM_INICIO)}<br>📞 Contatados: ${cobCont} · 🔁 Já tinham voltado: ${cobVolta}`) +
     kpiHTML("agd", pct(compar, agendFech), "Comparecimento", `${compar} de ${agendFech} agendados vieram`) +
     kpiHTML(mudouCli.size ? "warn" : "ok", `${mudouCli.size} · ${pct(mudouCli.size, nCli)}`, "Mudaram de número", `${mudouCli.size} de ${nCli} cliente(s) contatados estavam com número diferente`) +
+    kpiHTML(semTelCli.size || novosSemTel ? "bad" : "ok", `${semTelCli.size} · ${pct(semTelCli.size, nCli)}`, "Cadastrados sem telefone", `${semTelCli.size} de ${nCli} cliente(s) contatados não tinham número<br>🆕 Clientes novos no período sem telefone: ${novosSemTel} de ${novosCad} (${pct(novosSemTel, novosCad)})`) +
     kpiHTML(fila.length ? "bad" : "ok", fila.length, "Fila de atrasados hoje", fila.length ? `esperando, em média, ${espera} dia(s)` : "fila zerada 👏");
 
   const passo = (nome, n, base, cor) => `<div class="fl"><div class="lin"><span>${nome}</span><b>${n}${base && n !== base ? " · " + pct(n, base) : ""}</b></div><div class="barra"><i style="width:${base ? Math.max(2, n / base * 100) : 0}%;background:${cor}"></i></div></div>`;
@@ -939,7 +950,7 @@ window.renderIndicadores = () => {
     passo("Trocaram em outro lugar", fora, nCli, "#ef4444")
     : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
-  const cores = {"Agendou":"#a855f7","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524"};
+  const cores = {"Agendou":"#a855f7","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
   const ordemRes = Object.entries(res).sort((a,b) => b[1] - a[1]);
   $("ind-res").innerHTML = ordemRes.length ? ordemRes.map(([k, n]) => passo(k, n, nCont, cores[k] || "#9aa1ad")).join("") : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
