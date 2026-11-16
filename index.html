@@ -756,6 +756,7 @@ window.modalResultado = id => {
       <option value="trocou">Trocou com a gente (registrar troca)</option>
       <option value="fora">Já trocou em outro lugar</option>
       <option value="naoquer">Não quer mais contato</option>
+      <option value="veiculo">🔄 Trocou de veículo</option>
       <option value="semwhats">📞 Cliente não tem WhatsApp</option>
       <option value="numero">📱 Cliente mudou o número de contato</option>
       <option value="semtel">📵 Não cadastrou número de telefone ao fazer a troca</option>
@@ -780,12 +781,22 @@ window.trocaTipo = () => {
     <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
     <label>Meses até a próxima</label><input id="r-meses" type="number" value="${PRAZO_PADRAO}">`;
   else if (t === "numero") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente sai da lista de contatos (fica em "Arquivados"). Se ele voltar e você lançar uma troca, ele volta a ser ativo sozinho.</div>`;
+  else if (t === "veiculo") { const c = get($("modal").dataset.cli); ex.innerHTML = `<div class="sub" style="margin-top:8px">O veículo antigo (${esc(c.veiculo||"-")} ${esc(c.placa||"")}) vai pra "Arquivados".</div>
+    <label><input type="checkbox" id="r-novoveic" checked onchange="$('r-nv').style.display=this.checked?'block':'none'" style="width:auto"> Cadastrar o veículo novo e continuar chamando o cliente</label>
+    <div id="r-nv">
+      <div class="row"><div><label>Veículo novo (modelo)</label><input id="r-veic" placeholder="Ex.: Onix"></div><div><label>Ano</label><input id="r-ano" type="number"></div></div>
+      <div class="row"><div><label>Placa</label><input id="r-placa"></div><div><label>Tipo</label><select id="r-tipov"><option value="carro" ${tipoDe(c)==="carro"?"selected":""}>🚗 Carro</option><option value="moto" ${tipoDe(c)==="moto"?"selected":""}>🏍️ Moto</option></select></div></div>
+      <label>Chamar de novo em</label>
+      <div class="acts">${[15,30,60,90].map(d=>`<button class="btn btn-sm" onclick="$('r-data').value='${addDias(hoje(),d)}'">${d} dias</button>`).join("")}</div>
+      <input id="r-data" type="date" value="${addDias(hoje(),30)}" style="margin-top:8px">
+      <div class="sub" style="margin-top:6px">Ele fica com o mesmo nome e telefone. Quando ele vier trocar o óleo do carro novo, é só lançar a troca nele.</div>
+    </div>`; }
   else if (t === "semwhats") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:#f97316">📞 Sem WhatsApp — ligar</b>, pra quem for falar com ele saber que tem que ser por ligação.</div>`;
   else if (t === "semtel") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente sai da lista de contatos (fica em "Arquivados") e conta no indicador <b>Cadastrados sem telefone</b>. Se você conseguir o número depois, é só editar o cliente.</div>`;
   else ex.innerHTML = "";
 };
 
-const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", semwhats:"Não tem WhatsApp", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
+const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", veiculo:"Trocou de veículo", semwhats:"Não tem WhatsApp", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
 
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
@@ -798,6 +809,21 @@ window.salvarResultado = async id => {
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
   else if (t === "adiar") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
   else if (t === "semresp" || t === "orcamento") { upd.status = "ativo"; }
+  else if (t === "veiculo") {
+    upd.status = "arquivado";
+    if ($("r-novoveic").checked) {
+      const placa = $("r-placa").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const existe = placa && clientes.find(x => x.placa === placa && x.id !== id);
+      if (existe) { alert("Essa placa já está cadastrada no cliente " + existe.nome + ". Confira antes de salvar."); return; }
+      await addDoc(COL, {
+        nome: c.nome, telefone: c.telefone || "", placa, tipo: $("r-tipov").value,
+        veiculo: [$("r-veic").value.trim(), $("r-ano").value.trim()].filter(Boolean).join(" "),
+        obs: "Veículo anterior: " + [c.veiculo, c.placa].filter(Boolean).join(" ") + (c.obs ? "\n" + c.obs : ""),
+        status: "ativo", trocas: [], contatos: [], proximoContato: $("r-data").value, criadoEm: hoje(),
+        ...(c.semWhats ? {semWhats: true} : {})
+      });
+    }
+  }
   else if (t === "semwhats") { upd.status = "ativo"; upd.semWhats = true; }
   else if (t === "trocou") { const tr = lerTroca(); upd.trocas = [...(c.trocas||[]), tr]; upd.proximoContato = addMeses(tr.data, tr.meses); upd.status = "ativo"; }
   else if (t === "fora") {
@@ -980,7 +1006,7 @@ window.renderIndicadores = () => {
     passo("Trocaram em outro lugar", fora, nCli, "#ef4444")
     : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
-  const cores = {"Agendou":"#a855f7","Pediu orçamento":"#06b6d4","Não tem WhatsApp":"#f97316","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
+  const cores = {"Agendou":"#a855f7","Pediu orçamento":"#06b6d4","Não tem WhatsApp":"#f97316","Trocou de veículo":"#14b8a6","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
   const ordemRes = Object.entries(res).sort((a,b) => b[1] - a[1]);
   $("ind-res").innerHTML = ordemRes.length ? ordemRes.map(([k, n]) => passo(k, n, nCont, cores[k] || "#9aa1ad")).join("") : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
