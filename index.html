@@ -400,10 +400,12 @@ function msgsSemResp(c){
 function itemHTML(c){
   const s = situacao(c), u = ultimaTroca(c), ms = msgsSemResp(c);
   const tent = ms ? 0 : (c.contatos||[]).filter(x => x.data >= addDias(c.proximoContato, -60)).length;
+  const u0 = u ? u.data : "", orc = (c.contatos||[]).filter(x => x.resultado === "Pediu orçamento" && x.data >= u0).pop();
+  const tagOrc = orc ? `<span class="tag" style="background:#06b6d422;color:#06b6d4">💰 Pediu orçamento ${br(orc.data).slice(0,5)}</span>` : "";
   const tagMsg = ms ? `<span class="tag t-msg">📩 Já recebeu msg ${br(ms.ult).slice(0,5)}${ms.n > 1 ? " · " + ms.n + "x" : ""}</span>` : "";
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
-      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
+      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}${tagOrc}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
       <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
@@ -730,6 +732,7 @@ window.modalResultado = id => {
       <option value="adiar">Ainda não venceu — chamar de novo depois</option>
       <option value="semresp">Não respondeu</option>
       <option value="agendou">📅 Agendou — vai vir trocar</option>
+      <option value="orcamento">💰 Pediu orçamento</option>
       <option value="trocou">Trocou com a gente (registrar troca)</option>
       <option value="fora">Já trocou em outro lugar</option>
       <option value="naoquer">Não quer mais contato</option>
@@ -750,6 +753,7 @@ window.trocaTipo = () => {
   else if (t === "semresp") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:var(--ok)">📩 Já recebeu msg</b>.</div>`;
   else if (t === "agendou") ex.innerHTML = `<label>Que dia ele vai vir?</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">
     <div class="sub" style="margin-top:6px">Se ele não vier até esse dia, aparece como <b style="color:var(--bad)">⚠️ Não compareceu</b> no dia seguinte.</div>`;
+  else if (t === "orcamento") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:#06b6d4">💰 Pediu orçamento</b>. Use a anotação pra registrar o valor passado.</div>`;
   else if (t === "trocou") ex.innerHTML = camposTroca(tipoDe(get($("modal").dataset.cli)) === "moto" ? PRAZO_MOTO : PRAZO_PADRAO);
   else if (t === "fora") ex.innerHTML = `<label>Quando ele trocou fora? (pra chamar na próxima)</label><input id="r-data" type="date" value="${hoje()}">
     <label><input type="checkbox" id="r-seguir" checked style="width:auto"> Continuar chamando na próxima troca</label>
@@ -759,7 +763,7 @@ window.trocaTipo = () => {
   else ex.innerHTML = "";
 };
 
-const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
+const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
 
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
@@ -771,7 +775,7 @@ window.salvarResultado = async id => {
   const upd = {contatos, agendado: null};
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
   else if (t === "adiar") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
-  else if (t === "semresp") { upd.status = "ativo"; }
+  else if (t === "semresp" || t === "orcamento") { upd.status = "ativo"; }
   else if (t === "trocou") { const tr = lerTroca(); upd.trocas = [...(c.trocas||[]), tr]; upd.proximoContato = addMeses(tr.data, tr.meses); upd.status = "ativo"; }
   else if (t === "fora") {
     if ($("r-seguir").checked) { upd.proximoContato = addMeses($("r-data").value, $("r-meses").value); upd.status = "ativo"; }
@@ -867,7 +871,7 @@ window.renderIndicadores = () => {
   let venc = 0, recup = 0, cob = 0, vencCRM = 0, cobCont = 0, cobVolta = 0;
   let nCont = 0, trocasCRM = 0, receitaCRM = 0, recResp = 0, recSem = 0, troResp = 0, troSem = 0;
   let agendTot = 0, agendFech = 0, compar = 0;
-  const contatados = new Map(), res = {}, agendCli = new Set(), mudouCli = new Set(), semTelCli = new Set();
+  const contatados = new Map(), res = {}, agendCli = new Set(), orcCli = new Set(), mudouCli = new Set(), semTelCli = new Set();
   let novosCad = 0, novosSemTel = 0;
 
   cls.forEach(c => {
@@ -904,6 +908,7 @@ window.renderIndicadores = () => {
       nCont++;
       if (x.mudouNumero) mudouCli.add(c.id);
       if (x.semTelefone) semTelCli.add(c.id);
+      if (x.resultado === "Pediu orçamento") orcCli.add(c.id);
       res[x.resultado] = (res[x.resultado] || 0) + 1;
       if (!contatados.has(c.id) || x.data < contatados.get(c.id)) contatados.set(c.id, x.data);
       if (x.resultado === "Agendou") {
@@ -945,12 +950,13 @@ window.renderIndicadores = () => {
   const passo = (nome, n, base, cor) => `<div class="fl"><div class="lin"><span>${nome}</span><b>${n}${base && n !== base ? " · " + pct(n, base) : ""}</b></div><div class="barra"><i style="width:${base ? Math.max(2, n / base * 100) : 0}%;background:${cor}"></i></div></div>`;
   $("ind-funil").innerHTML = nCli ?
     passo("Contatados", nCli, nCli, "#3b82f6") +
+    passo("Pediram orçamento", orcCli.size, nCli, "#06b6d4") +
     passo("Agendaram", agendCli.size, nCli, "#a855f7") +
     passo("Trocaram (até 30 dias)", conv, nCli, "#22c55e") +
     passo("Trocaram em outro lugar", fora, nCli, "#ef4444")
     : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
-  const cores = {"Agendou":"#a855f7","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
+  const cores = {"Agendou":"#a855f7","Pediu orçamento":"#06b6d4","Trocou com a gente":"#22c55e","Ainda não venceu":"#3b82f6","Não respondeu":"#9aa1ad","Trocou em outro lugar":"#ef4444","Não quer contato":"#6b7280","Mudou de número":"#f5a524","Sem telefone no cadastro":"#ec4899"};
   const ordemRes = Object.entries(res).sort((a,b) => b[1] - a[1]);
   $("ind-res").innerHTML = ordemRes.length ? ordemRes.map(([k, n]) => passo(k, n, nCont, cores[k] || "#9aa1ad")).join("") : '<div class="sub">Nenhum contato registrado neste período ainda.</div>';
 
