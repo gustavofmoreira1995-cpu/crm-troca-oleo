@@ -392,7 +392,15 @@ function renderContatos(){
   document.querySelectorAll(".kpi").forEach(k => k.classList.toggle("sel", k.dataset.f === filtroAtual));
 
   const ordem = filtroAtual === "agendados" ? (c => c.agendado) : (c => c.proximoContato);
-  const lista = grupos[filtroAtual].sort((a,b) => ordem(a).localeCompare(ordem(b)));
+  // quem já recebeu msg e não respondeu (📩) vai pro fim da lista;
+  // entre eles, quem recebeu msg há mais tempo aparece primeiro
+  const semResp = c => { const m = msgsSemResp(c); return m ? m.ult : ""; };
+  const lista = grupos[filtroAtual].sort((a,b) => {
+    const sa = semResp(a), sb = semResp(b);
+    if (!!sa !== !!sb) return sa ? 1 : -1;
+    if (sa && sb && sa !== sb) return sa.localeCompare(sb);
+    return ordem(a).localeCompare(ordem(b));
+  });
   $("lista-contatos").innerHTML = lista.length ? lista.map(itemHTML).join("") : ($("bc").value.trim() ? '<div class="empty">Nenhum cliente com essa busca nesta aba. Veja os números nas outras abas acima.</div>' : '<div class="empty">Nenhum cliente aqui. 👍</div>');
 }
 
@@ -772,7 +780,7 @@ window.trocaTipo = () => {
   if (t === "adiar") ex.innerHTML = `<label>Chamar de novo em</label>
     <div class="acts">${[7,15,20,30,45,60].map(d=>`<button class="btn btn-sm" onclick="$('r-data').value='${addDias(hoje(),d)}'">${d} dias</button>`).join("")}</div>
     <input id="r-data" type="date" value="${addDias(hoje(),15)}" style="margin-top:8px">`;
-  else if (t === "semresp") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:var(--ok)">📩 Já recebeu msg</b>.</div>`;
+  else if (t === "semresp") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente vai pro <b>fim da lista</b>, com o sinal <b style="color:var(--ok)">📩 Já recebeu msg</b>.</div>`;
   else if (t === "agendou") ex.innerHTML = `<label>Que dia ele vai vir?</label><input id="r-data" type="date" value="${addDias(hoje(),2)}">
     <div class="sub" style="margin-top:6px">Se ele não vier até esse dia, aparece como <b style="color:var(--bad)">⚠️ Não compareceu</b> no dia seguinte.</div>`;
   else if (t === "orcamento") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista, no mesmo lugar, com o sinal <b style="color:#06b6d4">💰 Pediu orçamento</b>. Use a anotação pra registrar o valor passado.</div>`;
