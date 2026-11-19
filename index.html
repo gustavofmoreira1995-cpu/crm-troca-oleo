@@ -395,9 +395,14 @@ function renderContatos(){
   // quem já recebeu msg e não respondeu (📩) vai pro fim da lista;
   // entre eles, quem recebeu msg há mais tempo aparece primeiro
   const semResp = c => { const m = msgsSemResp(c); return m ? m.ult : ""; };
+  // quem já recebeu msg e está aguardando resposta (✉️) fica depois de quem ainda não recebeu, antes dos 📩
+  const pendData = c => { const p = msgPendente(c); return p ? p.data : ""; };
   const lista = grupos[filtroAtual].sort((a,b) => {
     const sa = semResp(a), sb = semResp(b);
     if (!!a.semWhats !== !!b.semWhats) return a.semWhats ? 1 : -1; // sem WhatsApp vai pro fim
+    if (!sa && !sb) { const pa = pendData(a), pb = pendData(b);
+      if (!!pa !== !!pb) return pa ? 1 : -1;
+      if (pa && pb && pa !== pb) return pa.localeCompare(pb); }
     if (!!sa !== !!sb) return sa ? 1 : -1;
     if (sa && sb && sa !== sb) return sa.localeCompare(sb);
     return ordem(a).localeCompare(ordem(b));
@@ -420,21 +425,34 @@ function msgsSemResp(c){
   let n = 0, ult = null;
   for (let i = lst.length - 1; i >= 0; i--) {
     const x = lst[i];
-    if (x.resultado !== "Não respondeu" || (u && x.data < u.data)) break;
+    if (u && x.data < u.data) break;
+    if (x.resultado === "Mensagem enviada") continue; // só marca que enviou; não conta como resposta
+    if (x.resultado !== "Não respondeu") break;
     n++; if (!ult) ult = x.data;
   }
   return n ? {n, ult} : null;
 }
 
+// mensagem enviada e ainda sem retorno registrado (último registro desde a última troca)
+function msgPendente(c){
+  const u = ultimaTroca(c), lst = c.contatos || [], x = lst[lst.length - 1];
+  if (!x || x.resultado !== "Mensagem enviada" || (u && x.data < u.data)) return null;
+  return {data: x.data, dias: -diasAte(x.data)};
+}
+
 function itemHTML(c){
   const s = situacao(c), u = ultimaTroca(c), ms = msgsSemResp(c);
-  const tent = ms ? 0 : (c.contatos||[]).filter(x => x.data >= addDias(c.proximoContato, -60)).length;
+  const pend = msgPendente(c);
+  const tent = ms || pend ? 0 : (c.contatos||[]).filter(x => x.resultado !== "Mensagem enviada" && x.data >= addDias(c.proximoContato, -60)).length;
+  const tagEnv = pend ? (pend.dias >= 2
+    ? `<span class="tag" style="background:#f5a52422;color:#f5a524">✉️ Msg enviada ${br(pend.data).slice(0,5)} · há ${pend.dias} dias — ver se respondeu</span>`
+    : `<span class="tag" style="background:#3b82f622;color:#60a5fa">✉️ Msg enviada ${br(pend.data).slice(0,5)} · aguardando</span>`) : "";
   const u0 = u ? u.data : "", orc = (c.contatos||[]).filter(x => x.resultado === "Pediu orçamento" && x.data >= u0).pop();
   const tagOrc = orc ? `<span class="tag" style="background:#06b6d422;color:#06b6d4">💰 Pediu orçamento ${br(orc.data).slice(0,5)}</span>` : "";
   const tagMsg = ms ? `<span class="tag t-msg">📩 Já recebeu msg ${br(ms.ult).slice(0,5)}${ms.n > 1 ? " · " + ms.n + "x" : ""}</span>` : "";
   return `<div class="item">
     <div class="info" onclick="abrirCliente('${c.id}')">
-      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagMsg}${tagOrc}${c.semWhats ? `<span class="tag" style="background:#f9731622;color:#f97316">📞 Sem WhatsApp — ligar</span>` : ""}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
+      <div class="nome">${esc(c.nome)} ${tagAgenda(c) || `<span class="tag ${s.cls}">${s.txt}</span>`}${tent ? `<span class="tag t-mut">${tent} tentativa(s)</span>` : ""}${tagEnv}${tagMsg}${tagOrc}${c.semWhats ? `<span class="tag" style="background:#f9731622;color:#f97316">📞 Sem WhatsApp — ligar</span>` : ""}${telOk(c) ? "" : `<span class="tag t-bad">📵 Sem telefone</span>`}</div>
       <div class="sub">📱 ${esc(c.telefone||"-")} · ${icone(tipoDe(c))} ${esc(c.veiculo||"-")} ${esc(c.placa||"")}</div>
       <div class="sub">Última troca: ${u ? br(u.data) + " · " + esc(u.servico||"") + " · " + money(u.valor) : "-"}</div>
     </div>
@@ -758,6 +776,7 @@ window.modalResultado = id => {
     <h2>Registrar contato — ${esc(c.nome)}</h2>
     <label>O que o cliente respondeu?</label>
     <select id="r-tipo" onchange="trocaTipo()">
+      ${msgPendente(c) ? "" : `<option value="enviei" selected>✉️ Enviei mensagem — aguardando resposta</option>`}
       <option value="adiar">Ainda não venceu — chamar de novo depois</option>
       <option value="semresp">Não respondeu</option>
       <option value="agendou">📅 Agendou — vai vir trocar</option>
@@ -778,7 +797,8 @@ window.modalResultado = id => {
 
 window.trocaTipo = () => {
   const t = $("r-tipo").value, ex = $("r-extra");
-  if (t === "adiar") ex.innerHTML = `<label>Chamar de novo em</label>
+  if (t === "enviei") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente continua na lista com o sinal <b style="color:#60a5fa">✉️ Msg enviada</b>, depois de quem ainda não recebeu mensagem. Depois de 2 dias o sinal fica laranja pra lembrar de conferir. Quando ele responder (ou não), registre o resultado normalmente.</div>`;
+  else if (t === "adiar") ex.innerHTML = `<label>Chamar de novo em</label>
     <div class="acts">${[7,15,20,30,45,60].map(d=>`<button class="btn btn-sm" onclick="$('r-data').value='${addDias(hoje(),d)}'">${d} dias</button>`).join("")}</div>
     <input id="r-data" type="date" value="${addDias(hoje(),15)}" style="margin-top:8px">`;
   else if (t === "semresp") ex.innerHTML = `<div class="sub" style="margin-top:8px">O cliente vai pro <b>fim da lista</b>, com o sinal <b style="color:var(--ok)">📩 Já recebeu msg</b>.</div>`;
@@ -796,7 +816,7 @@ window.trocaTipo = () => {
   else ex.innerHTML = "";
 };
 
-const NOMES = {adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", veiculo:"Trocou de veículo", semwhats:"Não tem WhatsApp", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
+const NOMES = {enviei:"Mensagem enviada", adiar:"Ainda não venceu", semresp:"Não respondeu", agendou:"Agendou", orcamento:"Pediu orçamento", trocou:"Trocou com a gente", fora:"Trocou em outro lugar", naoquer:"Não quer contato", veiculo:"Trocou de veículo", semwhats:"Não tem WhatsApp", numero:"Mudou de número", semtel:"Sem telefone no cadastro"};
 
 window.salvarResultado = async id => {
   const c = get(id), t = $("r-tipo").value, nota = $("r-nota").value.trim();
@@ -806,7 +826,7 @@ window.salvarResultado = async id => {
   if (t === "semtel") novo.semTelefone = true;
   if (t === "veiculo") novo.trocouVeiculo = true;
   const contatos = [...(c.contatos||[]), novo];
-  const upd = {contatos, agendado: null};
+  const upd = t === "enviei" ? {contatos, status: "ativo"} : {contatos, agendado: null}; // marcar envio não mexe no agendamento
   if (t === "agendou") { const d = $("r-data").value; upd.agendado = d; upd.proximoContato = addDias(d, 1); upd.status = "ativo"; }
   else if (t === "adiar") { upd.proximoContato = $("r-data").value; upd.status = "ativo"; }
   else if (t === "semresp" || t === "orcamento") { upd.status = "ativo"; }
@@ -907,7 +927,7 @@ window.renderIndicadores = () => {
   let tro = 0, ret = 0, fat = 0, fatRet = 0, fatNovo = 0;
   let venc = 0, recup = 0, cob = 0, vencCRM = 0, cobCont = 0, cobVolta = 0;
   let nCont = 0, trocasCRM = 0, receitaCRM = 0, recResp = 0, recSem = 0, troResp = 0, troSem = 0;
-  let agendTot = 0, agendFech = 0, compar = 0;
+  let agendTot = 0, agendFech = 0, compar = 0, msgEnv = 0;
   const contatados = new Map(), res = {}, agendCli = new Set(), orcCli = new Set(), mudouCli = new Set(), semTelCli = new Set(), veicCli = new Set();
   let novosCad = 0, novosSemTel = 0;
 
@@ -924,7 +944,7 @@ window.renderIndicadores = () => {
         const janela = conts.filter(x => x.data <= t.data && x.data >= addDias(t.data, -30));
         if (janela.length) {
           trocasCRM++; receitaCRM += v;
-          if (janela.some(x => x.resultado !== "Não respondeu")) { recResp += v; troResp++; } else { recSem += v; troSem++; }
+          if (janela.some(x => x.resultado !== "Não respondeu" && x.resultado !== "Mensagem enviada")) { recResp += v; troResp++; } else { recSem += v; troSem++; }
         }
       }
       const due = addMeses(t.data, t.meses || PRAZO_PADRAO);
@@ -942,6 +962,8 @@ window.renderIndicadores = () => {
     });
     conts.forEach(x => {
       if (!dentro(x.data)) return;
+      if (!contatados.has(c.id) || x.data < contatados.get(c.id)) contatados.set(c.id, x.data);
+      if (x.resultado === "Mensagem enviada") { msgEnv++; return; } // envio conta como contato feito, mas não é um resultado
       nCont++;
       if (x.mudouNumero) mudouCli.add(c.id);
       if (x.semTelefone) semTelCli.add(c.id);
@@ -978,7 +1000,7 @@ window.renderIndicadores = () => {
     kpiHTML("bad", pct(fora, nCli), "Perdidos pra concorrência", `${fora} disseram que trocaram fora`);
 
   $("ind-equipe").innerHTML =
-    kpiHTML("blue", nCont, "Contatos registrados", `${nCli} cliente(s) diferentes`) +
+    kpiHTML("blue", nCont, "Contatos registrados", `${nCli} cliente(s) diferentes${msgEnv ? `<br>✉️ ${msgEnv} mensagem(ns) marcada(s) como enviada(s)` : ""}`) +
     kpiHTML(vencCRM && cob / vencCRM < 0.7 ? "warn" : "ok", pct(cob, vencCRM), "Cobertura", `${vencCRM} vencidos desde ${br(CRM_INICIO)}<br>📞 Contatados: ${cobCont} · 🔁 Já tinham voltado: ${cobVolta}`) +
     kpiHTML("agd", pct(compar, agendFech), "Comparecimento", `${compar} de ${agendFech} agendados vieram`) +
     kpiHTML(mudouCli.size ? "warn" : "ok", `${mudouCli.size} · ${pct(mudouCli.size, nCli)}`, "Mudaram de número", `${mudouCli.size} de ${nCli} cliente(s) contatados estavam com número diferente`) +
