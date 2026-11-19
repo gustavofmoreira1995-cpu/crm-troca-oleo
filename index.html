@@ -397,6 +397,7 @@ function renderContatos(){
   const semResp = c => { const m = msgsSemResp(c); return m ? m.ult : ""; };
   const lista = grupos[filtroAtual].sort((a,b) => {
     const sa = semResp(a), sb = semResp(b);
+    if (!!a.semWhats !== !!b.semWhats) return a.semWhats ? 1 : -1; // sem WhatsApp vai pro fim
     if (!!sa !== !!sb) return sa ? 1 : -1;
     if (sa && sb && sa !== sb) return sa.localeCompare(sb);
     return ordem(a).localeCompare(ordem(b));
